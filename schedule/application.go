@@ -1,6 +1,8 @@
 package schedule
 
 import (
+	"context"
+	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -16,6 +18,7 @@ type Application struct {
 	artisan console.Artisan
 	cache   cache.Cache
 	cron    *cron.Cron
+	events  []schedule.Event
 	log     log.Log
 	debug   bool
 }
@@ -24,8 +27,11 @@ func NewApplication(artisan console.Artisan, cache cache.Cache, log log.Log, deb
 	return &Application{
 		artisan: artisan,
 		cache:   cache,
-		log:     log,
-		debug:   debug,
+		cron: cron.New(cron.WithParser(cron.NewParser(
+			cron.SecondOptional|cron.Minute|cron.Hour|cron.Dom|cron.Month|cron.Dow|cron.Descriptor,
+		)), cron.WithLogger(NewLogger(log, debug)), cron.WithLocation(carbon.Now().StdTime().Location())),
+		log:   log,
+		debug: debug,
 	}
 }
 
@@ -37,16 +43,33 @@ func (app *Application) Command(command string) schedule.Event {
 	return NewCommandEvent(command)
 }
 
-func (app *Application) Register(events []schedule.Event) {
-	if app.cron == nil {
-		app.cron = cron.New(cron.WithLogger(NewLogger(app.log, app.debug)))
-	}
+func (app *Application) Events() []schedule.Event {
+	return app.events
+}
 
+func (app *Application) Register(events []schedule.Event) {
 	app.addEvents(events)
 }
 
 func (app *Application) Run() {
 	app.cron.Run()
+}
+
+func (app *Application) Shutdown(ctx ...context.Context) error {
+	if len(ctx) == 0 {
+		ctx = append(ctx, context.Background())
+	}
+
+	cronCtx := app.cron.Stop()
+
+	for {
+		select {
+		case <-cronCtx.Done():
+			return nil
+		case <-ctx[0].Done():
+			return ctx[0].Err()
+		}
+	}
 }
 
 func (app *Application) addEvents(events []schedule.Event) {
@@ -61,14 +84,20 @@ func (app *Application) addEvents(events []schedule.Event) {
 
 		if err != nil {
 			app.log.Errorf("add schedule error: %v", err)
+			continue
 		}
+		app.events = append(app.events, event)
 	}
 }
 
 func (app *Application) getJob(event schedule.Event) cron.Job {
 	return cron.FuncJob(func() {
 		if event.IsOnOneServer() && event.GetName() != "" {
-			if app.cache.Lock(event.GetName()+carbon.Now().Format("Hi"), 1*time.Hour).Get() {
+			keySuffix := carbon.Now().Format("Hi")
+			if segments := strings.Split(event.GetCron(), " "); len(segments) == 6 {
+				keySuffix = carbon.Now().Format("His")
+			}
+			if app.cache.Lock(event.GetName()+keySuffix, 1*time.Hour).Get() {
 				app.runJob(event)
 			}
 		} else {
@@ -79,7 +108,9 @@ func (app *Application) getJob(event schedule.Event) cron.Job {
 
 func (app *Application) runJob(event schedule.Event) {
 	if event.GetCommand() != "" {
-		app.artisan.Call(event.GetCommand())
+		if err := app.artisan.Call(event.GetCommand()); err != nil {
+			app.log.Errorf("run %s command error: %v", event.GetCommand(), err)
+		}
 	} else {
 		event.GetCallback()()
 	}

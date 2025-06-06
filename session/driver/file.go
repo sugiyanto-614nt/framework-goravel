@@ -1,7 +1,6 @@
 package driver
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,7 +12,7 @@ import (
 type File struct {
 	path    string
 	minutes int
-	mu      sync.Mutex
+	mu      sync.RWMutex
 }
 
 func NewFile(path string, minutes int) *File {
@@ -49,7 +48,7 @@ func (f *File) Gc(maxLifetime int) error {
 			return err
 		}
 
-		if !info.IsDir() && info.ModTime().Before(cutoffTime.StdTime()) {
+		if !info.IsDir() && info.ModTime().UTC().Before(cutoffTime.StdTime()) {
 			return os.Remove(path)
 		}
 
@@ -62,8 +61,8 @@ func (f *File) Open(string, string) error {
 }
 
 func (f *File) Read(id string) (string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 
 	path := f.getFilePath(id)
 	if file.Exists(path) {
@@ -80,14 +79,14 @@ func (f *File) Read(id string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("session [%s] not found", id)
+	return "", nil
 }
 
 func (f *File) Write(id string, data string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return file.Create(f.getFilePath(id), data)
+	return file.PutContent(f.getFilePath(id), data)
 }
 
 func (f *File) getFilePath(id string) string {

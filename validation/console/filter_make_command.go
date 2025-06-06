@@ -1,12 +1,15 @@
 package console
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
-	"github.com/goravel/framework/support/color"
+	"github.com/goravel/framework/errors"
+	"github.com/goravel/framework/packages/match"
+	"github.com/goravel/framework/packages/modify"
 	supportconsole "github.com/goravel/framework/support/console"
 	"github.com/goravel/framework/support/file"
 	"github.com/goravel/framework/support/str"
@@ -16,17 +19,17 @@ type FilterMakeCommand struct {
 }
 
 // Signature The name and signature of the console command.
-func (receiver *FilterMakeCommand) Signature() string {
+func (r *FilterMakeCommand) Signature() string {
 	return "make:filter"
 }
 
 // Description The console command description.
-func (receiver *FilterMakeCommand) Description() string {
+func (r *FilterMakeCommand) Description() string {
 	return "Create a new filter class"
 }
 
 // Extend The console command extend.
-func (receiver *FilterMakeCommand) Extend() command.Extend {
+func (r *FilterMakeCommand) Extend() command.Extend {
 	return command.Extend{
 		Category: "make",
 		Flags: []command.Flag{
@@ -40,30 +43,41 @@ func (receiver *FilterMakeCommand) Extend() command.Extend {
 }
 
 // Handle Execute the console command.
-func (receiver *FilterMakeCommand) Handle(ctx console.Context) error {
+func (r *FilterMakeCommand) Handle(ctx console.Context) error {
 	m, err := supportconsole.NewMake(ctx, "filter", ctx.Argument(0), filepath.Join("app", "filters"))
 	if err != nil {
-		color.Red().Println(err)
+		ctx.Error(err.Error())
 		return nil
 	}
 
-	if err := file.Create(m.GetFilePath(), receiver.populateStub(receiver.getStub(), m.GetPackageName(), m.GetStructName())); err != nil {
-		return err
+	if err := file.PutContent(m.GetFilePath(), r.populateStub(r.getStub(), m.GetPackageName(), m.GetStructName(), m.GetSignature())); err != nil {
+		ctx.Error(err.Error())
+		return nil
 	}
 
-	color.Green().Println("Filter created successfully")
+	ctx.Success("Filter created successfully")
+
+	if err = modify.GoFile(filepath.Join("app", "providers", "validation_service_provider.go")).
+		Find(match.Imports()).Modify(modify.AddImport(m.GetPackageImportPath())).
+		Find(match.ValidationFilters()).Modify(modify.Register(fmt.Sprintf("&%s.%s{}", m.GetPackageName(), m.GetStructName()))).
+		Apply(); err != nil {
+		ctx.Warning(errors.ValidationFilterRegisterFailed.Args(err).Error())
+		return nil
+	}
+
+	ctx.Success("Filter registered successfully")
 
 	return nil
 }
 
-func (receiver *FilterMakeCommand) getStub() string {
+func (r *FilterMakeCommand) getStub() string {
 	return Stubs{}.Filter()
 }
 
 // populateStub Populate the place-holders in the command stub.
-func (receiver *FilterMakeCommand) populateStub(stub string, packageName, structName string) string {
+func (r *FilterMakeCommand) populateStub(stub string, packageName, structName, signature string) string {
 	stub = strings.ReplaceAll(stub, "DummyFilter", structName)
-	stub = strings.ReplaceAll(stub, "DummyName", str.Of(structName).Snake().String())
+	stub = strings.ReplaceAll(stub, "DummySignature", str.Of(signature).Snake().String())
 	stub = strings.ReplaceAll(stub, "DummyPackage", packageName)
 
 	return stub

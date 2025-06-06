@@ -4,9 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
+	"github.com/mattn/go-runewidth"
+	"github.com/pterm/pterm"
+
 	"github.com/goravel/framework/contracts/console"
+	"github.com/goravel/framework/errors"
+	"github.com/goravel/framework/support/color"
 	"github.com/goravel/framework/support/file"
 	"github.com/goravel/framework/support/str"
 )
@@ -22,7 +28,7 @@ func NewMake(ctx console.Context, ttype, name, root string) (*Make, error) {
 		name, err = ctx.Ask(fmt.Sprintf("Enter the %s name", ttype), console.AskOption{
 			Validate: func(s string) error {
 				if s == "" {
-					return fmt.Errorf("the %s name cannot be empty", ttype)
+					return errors.ConsoleEmptyFieldValue.Args(ttype)
 				}
 
 				return nil
@@ -33,16 +39,16 @@ func NewMake(ctx console.Context, ttype, name, root string) (*Make, error) {
 		}
 	}
 
-	make := &Make{
+	m := &Make{
 		name: name,
 		root: root,
 	}
 
-	if !ctx.OptionBool("force") && file.Exists(make.GetFilePath()) {
-		return nil, fmt.Errorf("the %s already exists. Use the --force or -f flag to overwrite", ttype)
+	if !ctx.OptionBool("force") && file.Exists(m.GetFilePath()) {
+		return nil, errors.ConsoleFileAlreadyExists.Args(ttype)
 	}
 
-	return make, nil
+	return m, nil
 }
 
 func (m *Make) GetFilePath() string {
@@ -51,11 +57,33 @@ func (m *Make) GetFilePath() string {
 	return filepath.Join(pwd, m.root, m.GetFolderPath(), str.Of(m.GetStructName()).Snake().String()+".go")
 }
 
+func (m *Make) GetSignature() string {
+	return str.Of(filepath.Join(m.GetFolderPath(), m.GetStructName())).
+		Replace(string(filepath.Separator), "_").Studly().String()
+}
+
 func (m *Make) GetStructName() string {
 	name := strings.TrimSuffix(m.name, ".go")
 	segments := strings.Split(name, "/")
 
 	return str.Of(segments[len(segments)-1]).Studly().String()
+}
+
+func (m *Make) GetPackageImportPath() string {
+	var paths []string
+	if info, ok := debug.ReadBuildInfo(); ok {
+		paths = append(paths, info.Main.Path)
+	}
+
+	if len(m.root) > 0 {
+		paths = append(paths, strings.Split(m.root, string(filepath.Separator))...)
+	}
+
+	if folders := m.GetFolderPath(); len(folders) > 0 {
+		paths = append(paths, strings.Split(folders, string(filepath.Separator))...)
+	}
+
+	return strings.Join(paths, "/")
 }
 
 func (m *Make) GetPackageName() string {
@@ -80,4 +108,44 @@ func (m *Make) GetFolderPath() string {
 	}
 
 	return folderPath
+}
+
+func ConfirmToProceed(ctx console.Context, env string) bool {
+	if env != "production" {
+		return true
+	}
+	if ctx.OptionBool("force") {
+		return true
+	}
+
+	return ctx.Confirm("Are you sure you want to run this command?")
+}
+
+func TwoColumnDetail(first, second string, filler ...rune) string {
+	margin := func(s string, left, right int) string {
+		var builder strings.Builder
+		if left > 0 {
+			builder.WriteString(strings.Repeat(" ", left))
+		}
+		builder.WriteString(s)
+		if right > 0 {
+			builder.WriteString(strings.Repeat(" ", right))
+		}
+		return builder.String()
+	}
+	width := func(s string) int {
+		return runewidth.StringWidth(pterm.RemoveColorFromString(s))
+	}
+	first = margin(first, 2, 1)
+	if w := width(second); w > 0 {
+		second = margin(second, 1, 2)
+	} else {
+		second = margin(second, 0, 2)
+	}
+	fillingText := ""
+	if w := pterm.GetTerminalWidth() - width(first) - width(second); w > 0 {
+		fillingText = color.Gray().Sprint(strings.Repeat(string(append(filler, '.')[0]), w))
+	}
+
+	return first + fillingText + second
 }

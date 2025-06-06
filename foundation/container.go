@@ -5,51 +5,34 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/goravel/framework/auth"
-	"github.com/goravel/framework/cache"
-	"github.com/goravel/framework/config"
-	"github.com/goravel/framework/console"
-	authcontract "github.com/goravel/framework/contracts/auth"
-	accesscontract "github.com/goravel/framework/contracts/auth/access"
-	cachecontract "github.com/goravel/framework/contracts/cache"
-	configcontract "github.com/goravel/framework/contracts/config"
-	consolecontract "github.com/goravel/framework/contracts/console"
-	cryptcontract "github.com/goravel/framework/contracts/crypt"
-	ormcontract "github.com/goravel/framework/contracts/database/orm"
-	schemacontract "github.com/goravel/framework/contracts/database/schema"
-	seerdercontract "github.com/goravel/framework/contracts/database/seeder"
-	eventcontract "github.com/goravel/framework/contracts/event"
-	filesystemcontract "github.com/goravel/framework/contracts/filesystem"
-	foundationcontract "github.com/goravel/framework/contracts/foundation"
-	grpccontract "github.com/goravel/framework/contracts/grpc"
-	hashcontract "github.com/goravel/framework/contracts/hash"
-	httpcontract "github.com/goravel/framework/contracts/http"
-	logcontract "github.com/goravel/framework/contracts/log"
-	mailcontract "github.com/goravel/framework/contracts/mail"
-	queuecontract "github.com/goravel/framework/contracts/queue"
-	routecontract "github.com/goravel/framework/contracts/route"
-	schedulecontract "github.com/goravel/framework/contracts/schedule"
-	sessioncontract "github.com/goravel/framework/contracts/session"
-	testingcontract "github.com/goravel/framework/contracts/testing"
-	translationcontract "github.com/goravel/framework/contracts/translation"
-	validationcontract "github.com/goravel/framework/contracts/validation"
-	"github.com/goravel/framework/crypt"
-	"github.com/goravel/framework/database"
-	"github.com/goravel/framework/event"
-	"github.com/goravel/framework/filesystem"
-	"github.com/goravel/framework/grpc"
-	"github.com/goravel/framework/hash"
-	"github.com/goravel/framework/http"
-	goravellog "github.com/goravel/framework/log"
-	"github.com/goravel/framework/mail"
-	"github.com/goravel/framework/queue"
-	"github.com/goravel/framework/route"
-	"github.com/goravel/framework/schedule"
-	"github.com/goravel/framework/session"
+	"github.com/goravel/framework/contracts"
+	contractsauth "github.com/goravel/framework/contracts/auth"
+	contractsaccess "github.com/goravel/framework/contracts/auth/access"
+	contractscache "github.com/goravel/framework/contracts/cache"
+	contractsconfig "github.com/goravel/framework/contracts/config"
+	contractsconsole "github.com/goravel/framework/contracts/console"
+	contractscrypt "github.com/goravel/framework/contracts/crypt"
+	contractsdb "github.com/goravel/framework/contracts/database/db"
+	contractsorm "github.com/goravel/framework/contracts/database/orm"
+	contractsmigration "github.com/goravel/framework/contracts/database/schema"
+	contractsseerder "github.com/goravel/framework/contracts/database/seeder"
+	contractsevent "github.com/goravel/framework/contracts/event"
+	contractsfilesystem "github.com/goravel/framework/contracts/filesystem"
+	contractsfoundation "github.com/goravel/framework/contracts/foundation"
+	contractsgrpc "github.com/goravel/framework/contracts/grpc"
+	contractshash "github.com/goravel/framework/contracts/hash"
+	contractshttp "github.com/goravel/framework/contracts/http"
+	contractshttpclient "github.com/goravel/framework/contracts/http/client"
+	contractslog "github.com/goravel/framework/contracts/log"
+	contractsmail "github.com/goravel/framework/contracts/mail"
+	contractsqueue "github.com/goravel/framework/contracts/queue"
+	contractsroute "github.com/goravel/framework/contracts/route"
+	contractsschedule "github.com/goravel/framework/contracts/schedule"
+	contractsession "github.com/goravel/framework/contracts/session"
+	contractstesting "github.com/goravel/framework/contracts/testing"
+	contractstranslation "github.com/goravel/framework/contracts/translation"
+	contractsvalidation "github.com/goravel/framework/contracts/validation"
 	"github.com/goravel/framework/support/color"
-	"github.com/goravel/framework/testing"
-	"github.com/goravel/framework/translation"
-	"github.com/goravel/framework/validation"
 )
 
 type instance struct {
@@ -66,283 +49,334 @@ func NewContainer() *Container {
 	return &Container{}
 }
 
-func (c *Container) Bind(key any, callback func(app foundationcontract.Application) (any, error)) {
-	c.bindings.Store(key, instance{concrete: callback, shared: false})
+func (r *Container) Bind(key any, callback func(app contractsfoundation.Application) (any, error)) {
+	r.bindings.Store(key, instance{concrete: callback, shared: false})
 }
 
-func (c *Container) BindWith(key any, callback func(app foundationcontract.Application, parameters map[string]any) (any, error)) {
-	c.bindings.Store(key, instance{concrete: callback, shared: false})
+func (r *Container) BindWith(key any, callback func(app contractsfoundation.Application, parameters map[string]any) (any, error)) {
+	r.bindings.Store(key, instance{concrete: callback, shared: false})
 }
 
-func (c *Container) Instance(key any, ins any) {
-	c.bindings.Store(key, instance{concrete: ins, shared: true})
+func (r *Container) Fresh(bindings ...any) {
+	if len(bindings) == 0 {
+		r.instances.Range(func(key, value any) bool {
+			if key != contracts.BindingConfig {
+				r.instances.Delete(key)
+			}
+
+			return true
+		})
+	} else {
+		for _, binding := range bindings {
+			r.instances.Delete(binding)
+		}
+	}
 }
 
-func (c *Container) Make(key any) (any, error) {
-	return c.make(key, nil)
+func (r *Container) Instance(key any, ins any) {
+	r.bindings.Store(key, instance{concrete: ins, shared: true})
 }
 
-func (c *Container) MakeArtisan() consolecontract.Artisan {
-	instance, err := c.Make(console.Binding)
+func (r *Container) Make(key any) (any, error) {
+	return r.make(key, nil)
+}
+
+func (r *Container) MakeArtisan() contractsconsole.Artisan {
+	instance, err := r.Make(contracts.BindingConsole)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(consolecontract.Artisan)
+	return instance.(contractsconsole.Artisan)
 }
 
-func (c *Container) MakeAuth(ctx httpcontract.Context) authcontract.Auth {
-	instance, err := c.MakeWith(auth.BindingAuth, map[string]any{
+func (r *Container) MakeAuth(ctx ...contractshttp.Context) contractsauth.Auth {
+	parameters := map[string]any{}
+	if len(ctx) > 0 {
+		parameters["ctx"] = ctx[0]
+	}
+
+	instance, err := r.MakeWith(contracts.BindingAuth, parameters)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+	if instance == nil {
+		return nil
+	}
+
+	return instance.(contractsauth.Auth)
+}
+
+func (r *Container) MakeCache() contractscache.Cache {
+	instance, err := r.Make(contracts.BindingCache)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+
+	return instance.(contractscache.Cache)
+}
+
+func (r *Container) MakeConfig() contractsconfig.Config {
+	instance, err := r.Make(contracts.BindingConfig)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+
+	return instance.(contractsconfig.Config)
+}
+
+func (r *Container) MakeCrypt() contractscrypt.Crypt {
+	instance, err := r.Make(contracts.BindingCrypt)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+
+	return instance.(contractscrypt.Crypt)
+}
+
+func (r *Container) MakeDB() contractsdb.DB {
+	instance, err := r.Make(contracts.BindingDB)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+	if instance == nil {
+		return nil
+	}
+
+	return instance.(contractsdb.DB)
+}
+
+func (r *Container) MakeEvent() contractsevent.Instance {
+	instance, err := r.Make(contracts.BindingEvent)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+
+	return instance.(contractsevent.Instance)
+}
+
+func (r *Container) MakeGate() contractsaccess.Gate {
+	instance, err := r.Make(contracts.BindingGate)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+
+	return instance.(contractsaccess.Gate)
+}
+
+func (r *Container) MakeGrpc() contractsgrpc.Grpc {
+	instance, err := r.Make(contracts.BindingGrpc)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+
+	return instance.(contractsgrpc.Grpc)
+}
+
+func (r *Container) MakeHash() contractshash.Hash {
+	instance, err := r.Make(contracts.BindingHash)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+
+	return instance.(contractshash.Hash)
+}
+
+func (r *Container) MakeHttp() contractshttpclient.Request {
+	instance, err := r.Make(contracts.BindingHttp)
+	if err != nil {
+		color.Errorln(err)
+		return nil
+	}
+
+	return instance.(contractshttpclient.Request)
+}
+
+func (r *Container) MakeLang(ctx context.Context) contractstranslation.Translator {
+	instance, err := r.MakeWith(contracts.BindingTranslation, map[string]any{
 		"ctx": ctx,
 	})
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(authcontract.Auth)
+	return instance.(contractstranslation.Translator)
 }
 
-func (c *Container) MakeCache() cachecontract.Cache {
-	instance, err := c.Make(cache.Binding)
+func (r *Container) MakeLog() contractslog.Log {
+	instance, err := r.Make(contracts.BindingLog)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(cachecontract.Cache)
+	return instance.(contractslog.Log)
 }
 
-func (c *Container) MakeConfig() configcontract.Config {
-	instance, err := c.Make(config.Binding)
+func (r *Container) MakeMail() contractsmail.Mail {
+	instance, err := r.Make(contracts.BindingMail)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(configcontract.Config)
+	return instance.(contractsmail.Mail)
 }
 
-func (c *Container) MakeCrypt() cryptcontract.Crypt {
-	instance, err := c.Make(crypt.Binding)
+func (r *Container) MakeOrm() contractsorm.Orm {
+	instance, err := r.Make(contracts.BindingOrm)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
+		return nil
+	}
+	if instance == nil {
 		return nil
 	}
 
-	return instance.(cryptcontract.Crypt)
+	return instance.(contractsorm.Orm)
 }
 
-func (c *Container) MakeEvent() eventcontract.Instance {
-	instance, err := c.Make(event.Binding)
+func (r *Container) MakeQueue() contractsqueue.Queue {
+	instance, err := r.Make(contracts.BindingQueue)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(eventcontract.Instance)
+	return instance.(contractsqueue.Queue)
 }
 
-func (c *Container) MakeGate() accesscontract.Gate {
-	instance, err := c.Make(auth.BindingGate)
+func (r *Container) MakeRateLimiter() contractshttp.RateLimiter {
+	instance, err := r.Make(contracts.BindingRateLimiter)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(accesscontract.Gate)
+	return instance.(contractshttp.RateLimiter)
 }
 
-func (c *Container) MakeGrpc() grpccontract.Grpc {
-	instance, err := c.Make(grpc.Binding)
+func (r *Container) MakeRoute() contractsroute.Route {
+	instance, err := r.Make(contracts.BindingRoute)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(grpccontract.Grpc)
+	return instance.(contractsroute.Route)
 }
 
-func (c *Container) MakeHash() hashcontract.Hash {
-	instance, err := c.Make(hash.Binding)
+func (r *Container) MakeSchedule() contractsschedule.Schedule {
+	instance, err := r.Make(contracts.BindingSchedule)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(hashcontract.Hash)
+	return instance.(contractsschedule.Schedule)
 }
 
-func (c *Container) MakeLang(ctx context.Context) translationcontract.Translator {
-	instance, err := c.MakeWith(translation.Binding, map[string]any{
-		"ctx": ctx,
-	})
+func (r *Container) MakeSchema() contractsmigration.Schema {
+	instance, err := r.Make(contracts.BindingSchema)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
+		return nil
+	}
+	if instance == nil {
 		return nil
 	}
 
-	return instance.(translationcontract.Translator)
+	return instance.(contractsmigration.Schema)
 }
 
-func (c *Container) MakeLog() logcontract.Log {
-	instance, err := c.Make(goravellog.Binding)
+func (r *Container) MakeSession() contractsession.Manager {
+	instance, err := r.Make(contracts.BindingSession)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(logcontract.Log)
+	return instance.(contractsession.Manager)
 }
 
-func (c *Container) MakeMail() mailcontract.Mail {
-	instance, err := c.Make(mail.Binding)
+func (r *Container) MakeStorage() contractsfilesystem.Storage {
+	instance, err := r.Make(contracts.BindingFilesystem)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(mailcontract.Mail)
+	return instance.(contractsfilesystem.Storage)
 }
 
-func (c *Container) MakeOrm() ormcontract.Orm {
-	instance, err := c.Make(database.BindingOrm)
+func (r *Container) MakeTesting() contractstesting.Testing {
+	instance, err := r.Make(contracts.BindingTesting)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(ormcontract.Orm)
+	return instance.(contractstesting.Testing)
 }
 
-func (c *Container) MakeQueue() queuecontract.Queue {
-	instance, err := c.Make(queue.Binding)
+func (r *Container) MakeValidation() contractsvalidation.Validation {
+	instance, err := r.Make(contracts.BindingValidation)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(queuecontract.Queue)
+	return instance.(contractsvalidation.Validation)
 }
 
-func (c *Container) MakeRateLimiter() httpcontract.RateLimiter {
-	instance, err := c.Make(http.BindingRateLimiter)
+func (r *Container) MakeView() contractshttp.View {
+	instance, err := r.Make(contracts.BindingView)
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(httpcontract.RateLimiter)
+	return instance.(contractshttp.View)
 }
 
-func (c *Container) MakeRoute() routecontract.Route {
-	instance, err := c.Make(route.Binding)
-	if err != nil {
-		color.Red().Println(err)
-		return nil
-	}
-
-	return instance.(routecontract.Route)
-}
-
-func (c *Container) MakeSchedule() schedulecontract.Schedule {
-	instance, err := c.Make(schedule.Binding)
-	if err != nil {
-		color.Red().Println(err)
-		return nil
-	}
-
-	return instance.(schedulecontract.Schedule)
-}
-
-func (c *Container) MakeSchema() schemacontract.Schema {
-	instance, err := c.Make(database.BindingSchema)
-	if err != nil {
-		color.Red().Println(err)
-		return nil
-	}
-
-	return instance.(schemacontract.Schema)
-}
-
-func (c *Container) MakeSession() sessioncontract.Manager {
-	instance, err := c.Make(session.Binding)
-	if err != nil {
-		color.Red().Println(err)
-		return nil
-	}
-
-	return instance.(sessioncontract.Manager)
-}
-
-func (c *Container) MakeStorage() filesystemcontract.Storage {
-	instance, err := c.Make(filesystem.Binding)
-	if err != nil {
-		color.Red().Println(err)
-		return nil
-	}
-
-	return instance.(filesystemcontract.Storage)
-}
-
-func (c *Container) MakeTesting() testingcontract.Testing {
-	instance, err := c.Make(testing.Binding)
-	if err != nil {
-		color.Red().Println(err)
-		return nil
-	}
-
-	return instance.(testingcontract.Testing)
-}
-
-func (c *Container) MakeValidation() validationcontract.Validation {
-	instance, err := c.Make(validation.Binding)
-	if err != nil {
-		color.Red().Println(err)
-		return nil
-	}
-
-	return instance.(validationcontract.Validation)
-}
-
-func (c *Container) MakeView() httpcontract.View {
-	instance, err := c.Make(http.BindingView)
-	if err != nil {
-		color.Red().Println(err)
-		return nil
-	}
-
-	return instance.(httpcontract.View)
-}
-
-func (c *Container) MakeSeeder() seerdercontract.Facade {
-	instance, err := c.Make(database.BindingSeeder)
+func (r *Container) MakeSeeder() contractsseerder.Facade {
+	instance, err := r.Make(contracts.BindingSeeder)
 
 	if err != nil {
-		color.Red().Println(err)
+		color.Errorln(err)
 		return nil
 	}
 
-	return instance.(seerdercontract.Facade)
+	return instance.(contractsseerder.Facade)
 }
 
-func (c *Container) MakeWith(key any, parameters map[string]any) (any, error) {
-	return c.make(key, parameters)
+func (r *Container) MakeWith(key any, parameters map[string]any) (any, error) {
+	return r.make(key, parameters)
 }
 
-func (c *Container) Singleton(key any, callback func(app foundationcontract.Application) (any, error)) {
-	c.bindings.Store(key, instance{concrete: callback, shared: true})
+func (r *Container) Singleton(key any, callback func(app contractsfoundation.Application) (any, error)) {
+	r.bindings.Store(key, instance{concrete: callback, shared: true})
 }
 
-func (c *Container) make(key any, parameters map[string]any) (any, error) {
-	binding, ok := c.bindings.Load(key)
+func (r *Container) make(key any, parameters map[string]any) (any, error) {
+	binding, ok := r.bindings.Load(key)
 	if !ok {
 		return nil, fmt.Errorf("binding not found: %+v", key)
 	}
 
 	if parameters == nil {
-		instance, ok := c.instances.Load(key)
+		instance, ok := r.instances.Load(key)
 		if ok {
 			return instance, nil
 		}
@@ -350,17 +384,17 @@ func (c *Container) make(key any, parameters map[string]any) (any, error) {
 
 	bindingImpl := binding.(instance)
 	switch concrete := bindingImpl.concrete.(type) {
-	case func(app foundationcontract.Application) (any, error):
+	case func(app contractsfoundation.Application) (any, error):
 		concreteImpl, err := concrete(App)
 		if err != nil {
 			return nil, err
 		}
 		if bindingImpl.shared {
-			c.instances.Store(key, concreteImpl)
+			r.instances.Store(key, concreteImpl)
 		}
 
 		return concreteImpl, nil
-	case func(app foundationcontract.Application, parameters map[string]any) (any, error):
+	case func(app contractsfoundation.Application, parameters map[string]any) (any, error):
 		concreteImpl, err := concrete(App, parameters)
 		if err != nil {
 			return nil, err
@@ -368,7 +402,7 @@ func (c *Container) make(key any, parameters map[string]any) (any, error) {
 
 		return concreteImpl, nil
 	default:
-		c.instances.Store(key, concrete)
+		r.instances.Store(key, concrete)
 
 		return concrete, nil
 	}

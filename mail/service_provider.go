@@ -1,10 +1,13 @@
 package mail
 
 import (
-	consolecontract "github.com/goravel/framework/contracts/console"
+	"github.com/goravel/framework/contracts"
+	contractsconsole "github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/foundation"
-	"github.com/goravel/framework/contracts/queue"
+	contractsqueue "github.com/goravel/framework/contracts/queue"
+	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/mail/console"
+	"github.com/goravel/framework/support/color"
 )
 
 const Binding = "goravel.mail"
@@ -12,18 +15,44 @@ const Binding = "goravel.mail"
 type ServiceProvider struct {
 }
 
-func (route *ServiceProvider) Register(app foundation.Application) {
-	app.Bind(Binding, func(app foundation.Application) (any, error) {
-		return NewApplication(app.MakeConfig(), app.MakeQueue()), nil
+func (r *ServiceProvider) Register(app foundation.Application) {
+	app.Bind(contracts.BindingMail, func(app foundation.Application) (any, error) {
+		config := app.MakeConfig()
+		if config == nil {
+			return nil, errors.ConfigFacadeNotSet.SetModule(errors.ModuleMail)
+		}
+
+		queue := app.MakeQueue()
+		if queue == nil {
+			return nil, errors.QueueFacadeNotSet.SetModule(errors.ModuleMail)
+		}
+
+		return NewApplication(config, queue), nil
 	})
 }
 
-func (route *ServiceProvider) Boot(app foundation.Application) {
-	app.MakeQueue().Register([]queue.Job{
-		NewSendMailJob(app.MakeConfig()),
+func (r *ServiceProvider) Boot(app foundation.Application) {
+	app.Commands([]contractsconsole.Command{
+		console.NewMailMakeCommand(),
 	})
 
-	app.MakeArtisan().Register([]consolecontract.Command{
-		console.NewMailMakeCommand(),
+	r.registerJobs(app)
+}
+
+func (r *ServiceProvider) registerJobs(app foundation.Application) {
+	queueFacade := app.MakeQueue()
+	if queueFacade == nil {
+		color.Warningln("Queue Facade is not initialized. Skipping job registration.")
+		return
+	}
+
+	configFacade := app.MakeConfig()
+	if configFacade == nil {
+		color.Warningln("Config Facade is not initialized. Skipping job registration.")
+		return
+	}
+
+	queueFacade.Register([]contractsqueue.Job{
+		NewSendMailJob(configFacade),
 	})
 }

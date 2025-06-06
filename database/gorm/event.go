@@ -17,10 +17,10 @@ type Event struct {
 	destOfMap   map[string]any
 	model       any
 	modelOfMap  map[string]any
-	query       *QueryImpl
+	query       *Query
 }
 
-func NewEvent(query *QueryImpl, model, dest any) *Event {
+func NewEvent(query *Query, model, dest any) *Event {
 	return &Event{
 		dest:  dest,
 		model: model,
@@ -28,50 +28,12 @@ func NewEvent(query *QueryImpl, model, dest any) *Event {
 	}
 }
 
-func (e *Event) ColumnNames() map[string]string {
-	if e.columnNames != nil {
-		return e.columnNames
-	}
-
-	if e.model != nil {
-		return fetchColumnNames(e.model)
-	} else {
-		return fetchColumnNames(e.dest)
-	}
-}
-
 func (e *Event) Context() context.Context {
 	return e.query.ctx
 }
 
-func (e *Event) DestOfMap() map[string]any {
-	if e.destOfMap != nil {
-		return e.destOfMap
-	}
-
-	destOfMap := make(map[string]any)
-	if destMap, ok := e.dest.(map[string]any); ok {
-		for key, value := range destMap {
-			destOfMap[key] = value
-			destOfMap[str.Of(key).Snake().String()] = value
-		}
-	} else {
-		destType := reflect.TypeOf(e.dest)
-		if destType.Kind() == reflect.Pointer {
-			destType = destType.Elem()
-		}
-		if destType.Kind() == reflect.Struct {
-			destOfMap = structToMap(e.dest)
-		}
-	}
-
-	e.destOfMap = destOfMap
-
-	return e.destOfMap
-}
-
 func (e *Event) GetAttribute(key string) any {
-	destOfMap := e.DestOfMap()
+	destOfMap := e.getDestOfMap()
 	value, exist := destOfMap[e.toDBColumnName(key)]
 	if exist && e.validColumn(key) && e.validValue(key, value) {
 		return value
@@ -81,7 +43,7 @@ func (e *Event) GetAttribute(key string) any {
 }
 
 func (e *Event) GetOriginal(key string, def ...any) any {
-	modelOfMap := e.ModelOfMap()
+	modelOfMap := e.getModelOfMap()
 	value, exist := modelOfMap[e.toDBColumnName(key)]
 	if exist {
 		return value
@@ -94,8 +56,12 @@ func (e *Event) GetOriginal(key string, def ...any) any {
 	return nil
 }
 
+func (e *Event) IsClean(fields ...string) bool {
+	return !e.IsDirty(fields...)
+}
+
 func (e *Event) IsDirty(columns ...string) bool {
-	destOfMap := e.DestOfMap()
+	destOfMap := e.getDestOfMap()
 
 	if len(columns) == 0 {
 		for destColumn, destValue := range destOfMap {
@@ -125,30 +91,20 @@ func (e *Event) IsDirty(columns ...string) bool {
 	return false
 }
 
-func (e *Event) IsClean(fields ...string) bool {
-	return !e.IsDirty(fields...)
-}
-
-func (e *Event) ModelOfMap() map[string]any {
-	if e.modelOfMap != nil {
-		return e.modelOfMap
-	}
-
-	if e.model == nil {
-		return map[string]any{}
-	}
-
-	e.modelOfMap = structToMap(e.model)
-
-	return e.modelOfMap
-}
-
 func (e *Event) Query() orm.Query {
-	return NewQueryImpl(e.query.ctx, e.query.config, e.query.connection, e.query.instance.Session(&gorm.Session{NewDB: true}), nil)
+	return NewQuery(e.query.ctx, e.query.config, e.query.dbConfig, e.query.instance.Session(&gorm.Session{NewDB: true}), e.query.grammar, e.query.log, e.query.modelToObserver, nil)
 }
 
 func (e *Event) SetAttribute(key string, value any) {
-	destOfMap := e.DestOfMap()
+	if e.dest == nil {
+		return
+	}
+
+	destOfMap := e.getDestOfMap()
+	if destOfMap == nil {
+		return
+	}
+
 	destOfMap[e.toDBColumnName(key)] = value
 	e.destOfMap = destOfMap
 
@@ -187,7 +143,7 @@ func (e *Event) SetAttribute(key string, value any) {
 }
 
 func (e *Event) dirty(destColumn string, destValue any) bool {
-	modelOfMap := e.ModelOfMap()
+	modelOfMap := e.getModelOfMap()
 	dbDestColumn := e.toDBColumnName(destColumn)
 
 	if modelValue, exist := modelOfMap[dbDestColumn]; exist {
@@ -208,8 +164,63 @@ func (e *Event) equalColumnName(origin, source string) bool {
 	return originDbColumnName == sourceDbColumnName
 }
 
+func (e *Event) getColumnNames() map[string]string {
+	if e.columnNames == nil {
+		if e.model != nil {
+			e.columnNames = fetchColumnNames(e.model)
+		} else {
+			e.columnNames = fetchColumnNames(e.dest)
+		}
+	}
+
+	return e.columnNames
+}
+
+func (e *Event) getDestOfMap() map[string]any {
+	if e.dest == nil {
+		return nil
+	}
+	if e.destOfMap != nil {
+		return e.destOfMap
+	}
+
+	destOfMap := make(map[string]any)
+	if destMap, ok := e.dest.(map[string]any); ok {
+		for key, value := range destMap {
+			destOfMap[key] = value
+			destOfMap[str.Of(key).Snake().String()] = value
+		}
+	} else {
+		destType := reflect.TypeOf(e.dest)
+		if destType.Kind() == reflect.Pointer {
+			destType = destType.Elem()
+		}
+		if destType.Kind() == reflect.Struct {
+			destOfMap = structToMap(e.dest)
+		}
+	}
+
+	e.destOfMap = destOfMap
+
+	return e.destOfMap
+}
+
+func (e *Event) getModelOfMap() map[string]any {
+	if e.modelOfMap != nil {
+		return e.modelOfMap
+	}
+
+	if e.model == nil {
+		return map[string]any{}
+	}
+
+	e.modelOfMap = structToMap(e.model)
+
+	return e.modelOfMap
+}
+
 func (e *Event) toDBColumnName(name string) string {
-	dbColumnName, exist := e.ColumnNames()[name]
+	dbColumnName, exist := e.getColumnNames()[name]
 	if exist {
 		return dbColumnName
 	}
@@ -277,64 +288,6 @@ func (e *Event) validValue(name string, value any) bool {
 	return !valueValue.IsZero()
 }
 
-func structToMap(data any) map[string]any {
-	res := make(map[string]any)
-	modelType := reflect.TypeOf(data)
-	modelValue := reflect.ValueOf(data)
-
-	if modelType.Kind() == reflect.Pointer {
-		modelType = modelType.Elem()
-		modelValue = modelValue.Elem()
-	}
-
-	if modelType.Kind() != reflect.Struct {
-		return res
-	}
-
-	for i := 0; i < modelType.NumField(); i++ {
-		fieldType := modelType.Field(i)
-		fieldValue := modelValue.Field(i)
-
-		if !fieldType.IsExported() {
-			continue
-		}
-
-		dbColumn := structNameToDbColumnName(fieldType.Name, fieldType.Tag.Get("gorm"))
-		if fieldValue.Kind() == reflect.Pointer {
-			if fieldValue.IsNil() {
-				res[dbColumn] = nil
-				continue
-			}
-
-			fieldValue = fieldValue.Elem()
-		}
-
-		if fieldValue.Kind() == reflect.Struct && fieldType.Anonymous {
-			subStructMap := structToMap(fieldValue.Interface())
-			for key, value := range subStructMap {
-				res[key] = value
-			}
-		} else {
-			res[dbColumn] = fieldValue.Interface()
-		}
-	}
-
-	return res
-}
-
-func structNameToDbColumnName(structName, tag string) string {
-	if strings.Contains(tag, "column:") {
-		tags := strings.Split(tag, ";")
-		for _, item := range tags {
-			if strings.Contains(item, "column:") {
-				return strings.Trim(strings.ReplaceAll(item, "column:", ""), " ")
-			}
-		}
-	}
-
-	return str.Of(structName).Snake().String()
-}
-
 func fetchColumnNames(model any) map[string]string {
 	res := make(map[string]string)
 	modelType := reflect.TypeOf(model)
@@ -364,4 +317,60 @@ func fetchColumnNames(model any) map[string]string {
 	}
 
 	return res
+}
+
+func structToMap(data any) map[string]any {
+	res := make(map[string]any)
+	modelType := reflect.TypeOf(data)
+	modelValue := reflect.ValueOf(data)
+
+	if modelType.Kind() == reflect.Pointer {
+		modelType = modelType.Elem()
+		modelValue = modelValue.Elem()
+	}
+
+	if modelType.Kind() != reflect.Struct {
+		return res
+	}
+
+	for i := 0; i < modelType.NumField(); i++ {
+		fieldType := modelType.Field(i)
+		fieldValue := modelValue.Field(i)
+
+		if !fieldType.IsExported() {
+			continue
+		}
+
+		dbColumn := structNameToDbColumnName(fieldType.Name, fieldType.Tag.Get("gorm"))
+		if fieldValue.Kind() == reflect.Pointer {
+			if fieldValue.IsNil() {
+				res[dbColumn] = fieldValue.Interface()
+				continue
+			}
+		}
+
+		if (fieldValue.Kind() == reflect.Struct || fieldValue.Kind() == reflect.Pointer) && fieldType.Anonymous {
+			subStructMap := structToMap(fieldValue.Interface())
+			for key, value := range subStructMap {
+				res[key] = value
+			}
+		} else {
+			res[dbColumn] = fieldValue.Interface()
+		}
+	}
+
+	return res
+}
+
+func structNameToDbColumnName(structName, tag string) string {
+	if strings.Contains(tag, "column:") {
+		tags := strings.Split(tag, ";")
+		for _, item := range tags {
+			if strings.Contains(item, "column:") {
+				return strings.Trim(strings.ReplaceAll(item, "column:", ""), " ")
+			}
+		}
+	}
+
+	return str.Of(structName).Snake().String()
 }

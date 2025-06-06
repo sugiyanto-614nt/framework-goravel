@@ -401,7 +401,7 @@ func (s *String) Lower() *String {
 	return s
 }
 
-// Ltrim returns the String instance with the leftmost occurrence of the given value removed.
+// LTrim returns the String instance with the leftmost occurrence of the given value removed.
 func (s *String) LTrim(characters ...string) *String {
 	if len(characters) == 0 {
 		s.value = strings.TrimLeft(s.value, " ")
@@ -804,12 +804,14 @@ func (s *String) Upper() *String {
 }
 
 // When returns the String instance with the given callback applied if the given condition is true.
-// If the condition is false, the fallback callback is applied.(if provided)
+// If the condition is false, the fallback callback is applied (if provided).
 func (s *String) When(condition bool, callback ...func(*String) *String) *String {
 	if condition {
-		return callback[0](s)
+		if len(callback) > 0 && callback[0] != nil {
+			return callback[0](s)
+		}
 	} else {
-		if len(callback) > 1 {
+		if len(callback) > 1 && callback[1] != nil {
 			return callback[1](s)
 		}
 	}

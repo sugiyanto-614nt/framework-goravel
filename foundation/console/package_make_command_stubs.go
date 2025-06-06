@@ -37,7 +37,7 @@ var App foundation.Application
 type ServiceProvider struct {
 }
 
-func (receiver *ServiceProvider) Register(app foundation.Application) {
+func (r *ServiceProvider) Register(app foundation.Application) {
 	App = app
 
 	app.Bind(Binding, func(app foundation.Application) (any, error) {
@@ -45,7 +45,7 @@ func (receiver *ServiceProvider) Register(app foundation.Application) {
 	})
 }
 
-func (receiver *ServiceProvider) Boot(app foundation.Application) {
+func (r *ServiceProvider) Boot(app foundation.Application) {
 
 }
 `
@@ -119,6 +119,39 @@ func DummyCamelName() contracts.DummyCamelName {
 	content = strings.ReplaceAll(content, "DummyRoot", r.root)
 	content = strings.ReplaceAll(content, "DummyName", r.name)
 	content = strings.ReplaceAll(content, "DummyCamelName", str.Of(r.name).Studly().String())
+
+	return content
+}
+
+func (r PackageMakeCommandStubs) Setup() string {
+	content := `package main
+
+import (
+	"os"
+
+	"github.com/goravel/framework/packages"
+	"github.com/goravel/framework/packages/match"
+	"github.com/goravel/framework/packages/modify"
+	"github.com/goravel/framework/support/path"
+)
+
+func main() {
+	packages.Setup(os.Args).
+		Install(
+			modify.File(path.Config("app.go")).
+				Find(match.Imports()).Modify(modify.AddImport(packages.GetModulePath())).
+				Find(match.Providers()).Modify(modify.AddProvider("&DummyName.ServiceProvider{}")),
+		).
+		Uninstall(
+			modify.File(path.Config("app.go")).
+				Find(match.Providers()).Modify(modify.RemoveProvider("&DummyName.ServiceProvider{}")).
+				Find(match.Imports()).Modify(modify.RemoveImport(packages.GetModulePath())),
+		).
+		Execute()
+}
+
+`
+	content = strings.ReplaceAll(content, "DummyName", r.name)
 
 	return content
 }

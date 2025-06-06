@@ -9,10 +9,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/goravel/framework/contracts/schedule"
-	cachemocks "github.com/goravel/framework/mocks/cache"
-	consolemocks "github.com/goravel/framework/mocks/console"
-	logmocks "github.com/goravel/framework/mocks/log"
-	"github.com/goravel/framework/support/carbon"
+	mockscache "github.com/goravel/framework/mocks/cache"
+	mocksconsole "github.com/goravel/framework/mocks/console"
+	mockslog "github.com/goravel/framework/mocks/log"
 )
 
 type ApplicationTestSuite struct {
@@ -20,6 +19,7 @@ type ApplicationTestSuite struct {
 }
 
 func TestApplicationTestSuite(t *testing.T) {
+	t.Parallel()
 	suite.Run(t, new(ApplicationTestSuite))
 }
 
@@ -27,11 +27,11 @@ func (s *ApplicationTestSuite) SetupTest() {
 }
 
 func (s *ApplicationTestSuite) TestCallAndCommand() {
-	mockArtisan := &consolemocks.Artisan{}
-	mockArtisan.On("Call", "test --name Goravel argument0 argument1").Return().Times(3)
+	mockArtisan := mocksconsole.NewArtisan(s.T())
+	mockArtisan.EXPECT().Call("test --name Goravel argument0 argument1").Return(nil).Times(2)
 
-	mockLog := &logmocks.Log{}
-	mockLog.On("Error", "panic", mock.Anything).Return().Times(3)
+	mockLog := mockslog.NewLog(s.T())
+	mockLog.EXPECT().Error("panic", mock.Anything).Return().Times(4)
 
 	immediatelyCall := 0
 	delayIfStillRunningCall := 0
@@ -41,111 +41,106 @@ func (s *ApplicationTestSuite) TestCallAndCommand() {
 	app.Register([]schedule.Event{
 		app.Call(func() {
 			panic(1)
-		}).EveryMinute(),
+		}).Cron("* * * * * *"),
 		app.Call(func() {
 			immediatelyCall++
-		}).EveryMinute(),
+		}).Cron("* * * * * *"),
 		app.Call(func() {
-			time.Sleep(61 * time.Second)
+			time.Sleep(2 * time.Second)
 			delayIfStillRunningCall++
-		}).EveryMinute().DelayIfStillRunning(),
+		}).Cron("* * * * * *").DelayIfStillRunning(),
 		app.Call(func() {
-			time.Sleep(61 * time.Second)
+			time.Sleep(2 * time.Second)
 			skipIfStillRunningCall++
-		}).EveryMinute().SkipIfStillRunning(),
-		app.Command("test --name Goravel argument0 argument1").EveryMinute(),
+		}).Cron("* * * * * *").SkipIfStillRunning(),
+		app.Command("test --name Goravel argument0 argument1").Cron("*/2 * * * * *"),
 	})
 
-	second := carbon.Now().Second()
-	// Make sure run 3 times
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(120+6+60-second)*time.Second)
-	defer cancel()
-	go func(ctx context.Context) {
-		app.Run()
+	go app.Run()
 
-		for range ctx.Done() {
-			return
-		}
-	}(ctx)
+	time.Sleep(4 * time.Second)
 
-	time.Sleep(time.Duration(120+5+60-second) * time.Second)
-	app.cron.Stop()
-
-	s.Equal(3, immediatelyCall)
-	s.Equal(2, delayIfStillRunningCall)
-	s.Equal(1, skipIfStillRunningCall)
-	mockArtisan.AssertExpectations(s.T())
-	mockLog.AssertExpectations(s.T())
+	s.NoError(app.Shutdown())
+	s.Equal(4, immediatelyCall)
+	s.Equal(4, delayIfStillRunningCall)
+	s.Equal(2, skipIfStillRunningCall)
 }
 
 func (s *ApplicationTestSuite) TestOnOneServer() {
-	mockArtisan := &consolemocks.Artisan{}
-	mockArtisan.On("Call", "test --name Goravel argument0 argument1").Return().Twice()
+	mockCache := mockscache.NewCache(s.T())
+	mockLock := mockscache.NewLock(s.T())
+	mockLock.EXPECT().Get().Return(true).Once()
+	mockCache.EXPECT().Lock(mock.Anything, 1*time.Hour).Return(mockLock).Once()
 
-	now := carbon.Now().AddMinute()
-	mockCache := &cachemocks.Cache{}
-	mockLock := &cachemocks.Lock{}
-	mockCache.On("Lock", "immediately"+now.Format("Hi"), 1*time.Hour).Return(mockLock).Once()
-	mockLock.On("Get").Return(true).Once()
-	mockLock = &cachemocks.Lock{}
-	mockCache.On("Lock", "immediately"+now.AddMinute().Format("Hi"), 1*time.Hour).Return(mockLock).Once()
-	mockLock.On("Get").Return(true).Once()
-	mockLock = &cachemocks.Lock{}
-	mockCache.On("Lock", "test --name Goravel argument0 argument1"+now.Format("Hi"), 1*time.Hour).Return(mockLock).Once()
-	mockLock.On("Get").Return(true).Once()
-	mockLock = &cachemocks.Lock{}
-	mockCache.On("Lock", "test --name Goravel argument0 argument1"+now.AddMinute().Format("Hi"), 1*time.Hour).Return(mockLock).Once()
-	mockLock.On("Get").Return(true).Once()
-
-	mockCache1 := &cachemocks.Cache{}
-	mockLock1 := &cachemocks.Lock{}
-	mockCache1.On("Lock", "immediately"+now.Format("Hi"), 1*time.Hour).Return(mockLock1).Once()
-	mockLock1.On("Get").Return(false).Once()
-	mockLock1 = &cachemocks.Lock{}
-	mockCache1.On("Lock", "immediately"+now.AddMinute().Format("Hi"), 1*time.Hour).Return(mockLock1).Once()
-	mockLock1.On("Get").Return(false).Once()
-	mockLock1 = &cachemocks.Lock{}
-	mockCache1.On("Lock", "test --name Goravel argument0 argument1"+now.Format("Hi"), 1*time.Hour).Return(mockLock1).Once()
-	mockLock1.On("Get").Return(false).Once()
-	mockLock1 = &cachemocks.Lock{}
-	mockCache1.On("Lock", "test --name Goravel argument0 argument1"+now.AddMinute().Format("Hi"), 1*time.Hour).Return(mockLock1).Once()
-	mockLock1.On("Get").Return(false).Once()
+	mockCache1 := mockscache.NewCache(s.T())
+	mockLock1 := mockscache.NewLock(s.T())
+	mockLock1.EXPECT().Get().Return(false).Once()
+	mockCache1.EXPECT().Lock(mock.Anything, 1*time.Hour).Return(mockLock1).Once()
 
 	immediatelyCall := 0
 
-	app := NewApplication(mockArtisan, mockCache, nil, false)
+	app := NewApplication(nil, mockCache, nil, false)
 	app.Register([]schedule.Event{
 		app.Call(func() {
 			immediatelyCall++
-		}).EveryMinute().OnOneServer().Name("immediately"),
-		app.Command("test --name Goravel argument0 argument1").EveryMinute().OnOneServer(),
+		}).Cron("*/2 * * * * *").OnOneServer().Name("immediately"),
 	})
 
 	app1 := NewApplication(nil, mockCache1, nil, false)
 	app1.Register([]schedule.Event{
-		app.Call(func() {
+		app1.Call(func() {
 			immediatelyCall++
-		}).EveryMinute().OnOneServer().Name("immediately"),
-		app.Command("test --name Goravel argument0 argument1").EveryMinute().OnOneServer(),
+		}).Cron("*/2 * * * * *").OnOneServer().Name("immediately"),
 	})
 
-	second := carbon.Now().Second()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(60+2+60-second)*time.Second)
+	go app.Run()
+	go app1.Run()
+
+	time.Sleep(2 * time.Second)
+
+	s.NoError(app.Shutdown())
+	s.NoError(app1.Shutdown())
+
+	s.Equal(1, immediatelyCall)
+}
+
+func (s *ApplicationTestSuite) TestShutdown() {
+	immediatelyCall := 0
+
+	app := NewApplication(nil, nil, nil, false)
+	app.Register([]schedule.Event{
+		app.Call(func() {
+			time.Sleep(4 * time.Second)
+			immediatelyCall++
+		}).Cron("*/2 * * * * *"),
+	})
+
+	go app.Run()
+
+	time.Sleep(2 * time.Second)
+
+	s.NoError(app.Shutdown())
+	s.Equal(1, immediatelyCall)
+}
+
+func (s *ApplicationTestSuite) TestShutdownWithContext() {
+	immediatelyCall := 0
+
+	app := NewApplication(nil, nil, nil, false)
+	app.Register([]schedule.Event{
+		app.Call(func() {
+			time.Sleep(10 * time.Second)
+			immediatelyCall++
+		}).Cron("*/2 * * * * *"),
+	})
+
+	go app.Run()
+
+	time.Sleep(2 * time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	go func(ctx context.Context) {
-		app.Run()
-		app1.Run()
 
-		for range ctx.Done() {
-			return
-		}
-	}(ctx)
-
-	time.Sleep(time.Duration(60+1+60-second) * time.Second)
-	app.cron.Stop()
-	app1.cron.Stop()
-
-	s.Equal(2, immediatelyCall)
-	mockArtisan.AssertExpectations(s.T())
-	mockCache.AssertExpectations(s.T())
+	s.EqualError(app.Shutdown(ctx), "context deadline exceeded")
+	s.Equal(0, immediatelyCall)
 }

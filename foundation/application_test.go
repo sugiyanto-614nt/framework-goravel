@@ -1,7 +1,6 @@
 package foundation
 
 import (
-	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,11 +12,9 @@ import (
 	"github.com/goravel/framework/cache"
 	frameworkconfig "github.com/goravel/framework/config"
 	"github.com/goravel/framework/console"
-	"github.com/goravel/framework/contracts/database/orm"
+	"github.com/goravel/framework/contracts"
 	"github.com/goravel/framework/contracts/foundation"
 	"github.com/goravel/framework/crypt"
-	"github.com/goravel/framework/database"
-	"github.com/goravel/framework/database/gorm"
 	"github.com/goravel/framework/event"
 	"github.com/goravel/framework/filesystem"
 	"github.com/goravel/framework/grpc"
@@ -25,18 +22,19 @@ import (
 	"github.com/goravel/framework/http"
 	frameworklog "github.com/goravel/framework/log"
 	"github.com/goravel/framework/mail"
-	cachemocks "github.com/goravel/framework/mocks/cache"
-	configmocks "github.com/goravel/framework/mocks/config"
-	consolemocks "github.com/goravel/framework/mocks/console"
-	ormmocks "github.com/goravel/framework/mocks/database/orm"
-	logmocks "github.com/goravel/framework/mocks/log"
-	queuemocks "github.com/goravel/framework/mocks/queue"
-	routemocks "github.com/goravel/framework/mocks/route"
+	mockscache "github.com/goravel/framework/mocks/cache"
+	mocksconfig "github.com/goravel/framework/mocks/config"
+	mocksconsole "github.com/goravel/framework/mocks/console"
+	mocksdb "github.com/goravel/framework/mocks/database/db"
+	mocksorm "github.com/goravel/framework/mocks/database/orm"
+	mocksfoundation "github.com/goravel/framework/mocks/foundation"
+	mockslog "github.com/goravel/framework/mocks/log"
+	mocksqueue "github.com/goravel/framework/mocks/queue"
+	mocksroute "github.com/goravel/framework/mocks/route"
 	"github.com/goravel/framework/queue"
 	"github.com/goravel/framework/schedule"
 	frameworksession "github.com/goravel/framework/session"
-	supportdocker "github.com/goravel/framework/support/docker"
-	"github.com/goravel/framework/support/env"
+	"github.com/goravel/framework/support"
 	"github.com/goravel/framework/support/file"
 	frameworktranslation "github.com/goravel/framework/translation"
 	"github.com/goravel/framework/validation"
@@ -48,11 +46,11 @@ type ApplicationTestSuite struct {
 }
 
 func TestApplicationTestSuite(t *testing.T) {
-	assert.Nil(t, file.Create(".env", "APP_KEY=12345678901234567890123456789012"))
+	assert.Nil(t, file.PutContent(support.EnvFilePath, "APP_KEY=12345678901234567890123456789012"))
 
 	suite.Run(t, new(ApplicationTestSuite))
 
-	assert.Nil(t, file.Remove(".env"))
+	assert.Nil(t, file.Remove(support.EnvFilePath))
 }
 
 func (s *ApplicationTestSuite) SetupTest() {
@@ -65,38 +63,42 @@ func (s *ApplicationTestSuite) SetupTest() {
 }
 
 func (s *ApplicationTestSuite) TestPath() {
-	s.Equal(filepath.Join("app", "goravel.go"), s.app.Path("goravel.go"))
+	s.Equal(filepath.Join(support.RootPath, "app", "goravel.go"), s.app.Path("goravel.go"))
 }
 
 func (s *ApplicationTestSuite) TestBasePath() {
-	s.Equal("goravel.go", s.app.BasePath("goravel.go"))
+	s.Equal(filepath.Join(support.RootPath, "goravel.go"), s.app.BasePath("goravel.go"))
 }
 
 func (s *ApplicationTestSuite) TestConfigPath() {
-	s.Equal(filepath.Join("config", "goravel.go"), s.app.ConfigPath("goravel.go"))
+	s.Equal(filepath.Join(support.RootPath, "config", "goravel.go"), s.app.ConfigPath("goravel.go"))
 }
 
 func (s *ApplicationTestSuite) TestDatabasePath() {
-	s.Equal(filepath.Join("database", "goravel.go"), s.app.DatabasePath("goravel.go"))
+	s.Equal(filepath.Join(support.RootPath, "database", "goravel.go"), s.app.DatabasePath("goravel.go"))
 }
 
 func (s *ApplicationTestSuite) TestStoragePath() {
-	s.Equal(filepath.Join("storage", "goravel.go"), s.app.StoragePath("goravel.go"))
+	s.Equal(filepath.Join(support.RootPath, "storage", "goravel.go"), s.app.StoragePath("goravel.go"))
+}
+
+func (s *ApplicationTestSuite) TestResourcePath() {
+	s.Equal(filepath.Join(support.RootPath, "resources", "goravel.go"), s.app.ResourcePath("goravel.go"))
 }
 
 func (s *ApplicationTestSuite) TestLangPath() {
-	mockConfig := &configmocks.Config{}
+	mockConfig := mocksconfig.NewConfig(s.T())
 	mockConfig.EXPECT().GetString("app.lang_path", "lang").Return("test").Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
 
-	s.Equal(filepath.Join("test", "goravel.go"), s.app.LangPath("goravel.go"))
+	s.Equal(filepath.Join(support.RootPath, "test", "goravel.go"), s.app.LangPath("goravel.go"))
 }
 
 func (s *ApplicationTestSuite) TestPublicPath() {
-	s.Equal(filepath.Join("public", "goravel.go"), s.app.PublicPath("goravel.go"))
+	s.Equal(filepath.Join(support.RootPath, "public", "goravel.go"), s.app.PublicPath("goravel.go"))
 }
 
 func (s *ApplicationTestSuite) TestExecutablePath() {
@@ -151,44 +153,52 @@ func (s *ApplicationTestSuite) TestMakeArtisan() {
 }
 
 func (s *ApplicationTestSuite) TestMakeAuth() {
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetString", "auth.defaults.guard").Return("user").Once()
+	mockConfig := mocksconfig.NewConfig(s.T())
+	mockConfig.EXPECT().GetString("auth.defaults.guard").Return("user").Once()
+	mockConfig.EXPECT().GetString("auth.guards.user.driver").Return("jwt").Once()
+	mockConfig.EXPECT().GetString("auth.guards.user.provider").Return("user").Once()
+	mockConfig.EXPECT().GetString("auth.providers.user.driver").Return("orm").Once()
+	mockConfig.EXPECT().GetString("jwt.secret").Return("secret").Once()
+	mockConfig.EXPECT().Get("auth.guards.user.ttl").Return(100).Once()
+	mockConfig.EXPECT().GetInt("jwt.refresh_ttl").Return(100).Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
-	s.app.Singleton(cache.Binding, func(app foundation.Application) (any, error) {
-		return &cachemocks.Cache{}, nil
+	s.app.Singleton(contracts.BindingCache, func(app foundation.Application) (any, error) {
+		return &mockscache.Cache{}, nil
 	})
-	s.app.Singleton(database.BindingOrm, func(app foundation.Application) (any, error) {
-		return &ormmocks.Orm{}, nil
+	s.app.Singleton(contracts.BindingOrm, func(app foundation.Application) (any, error) {
+		return &mocksorm.Orm{}, nil
+	})
+	s.app.Singleton(contracts.BindingLog, func(app foundation.Application) (any, error) {
+		return &mockslog.Log{}, nil
 	})
 
 	serviceProvider := &auth.ServiceProvider{}
 	serviceProvider.Register(s.app)
+	serviceProvider.Boot(s.app)
 
 	s.NotNil(s.app.MakeAuth(http.Background()))
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeCache() {
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetString", "cache.default").Return("memory").Once()
-	mockConfig.On("GetString", "cache.stores.memory.driver").Return("memory").Once()
-	mockConfig.On("GetString", "cache.prefix").Return("goravel").Once()
+	mockConfig := mocksconfig.NewConfig(s.T())
+	mockConfig.EXPECT().GetString("cache.default").Return("memory").Once()
+	mockConfig.EXPECT().GetString("cache.stores.memory.driver").Return("memory").Once()
+	mockConfig.EXPECT().GetString("cache.prefix").Return("goravel").Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
-	s.app.Singleton(frameworklog.Binding, func(app foundation.Application) (any, error) {
-		return &logmocks.Log{}, nil
+	s.app.Singleton(contracts.BindingLog, func(app foundation.Application) (any, error) {
+		return &mockslog.Log{}, nil
 	})
 
 	serviceProvider := &cache.ServiceProvider{}
 	serviceProvider.Register(s.app)
 
 	s.NotNil(s.app.MakeCache())
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeConfig() {
@@ -199,23 +209,23 @@ func (s *ApplicationTestSuite) TestMakeConfig() {
 }
 
 func (s *ApplicationTestSuite) TestMakeCrypt() {
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetString", "app.key").Return("12345678901234567890123456789012").Once()
+	mockConfig := mocksconfig.NewConfig(s.T())
+	mockConfig.EXPECT().GetString("app.key").Return("12345678901234567890123456789012").Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
+	s.app.SetJson(mocksfoundation.NewJson(s.T()))
 
 	serviceProvider := &crypt.ServiceProvider{}
 	serviceProvider.Register(s.app)
 
 	s.NotNil(s.app.MakeCrypt())
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeEvent() {
-	s.app.Singleton(queue.Binding, func(app foundation.Application) (any, error) {
-		return &queuemocks.Queue{}, nil
+	s.app.Singleton(contracts.BindingQueue, func(app foundation.Application) (any, error) {
+		return &mocksqueue.Queue{}, nil
 	})
 
 	serviceProvider := &event.ServiceProvider{}
@@ -232,8 +242,8 @@ func (s *ApplicationTestSuite) TestMakeGate() {
 }
 
 func (s *ApplicationTestSuite) TestMakeGrpc() {
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
-		return &configmocks.Config{}, nil
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
+		return &mocksconfig.Config{}, nil
 	})
 
 	serviceProvider := &grpc.ServiceProvider{}
@@ -243,13 +253,13 @@ func (s *ApplicationTestSuite) TestMakeGrpc() {
 }
 
 func (s *ApplicationTestSuite) TestMakeHash() {
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetString", "hashing.driver", "argon2id").Return("argon2id").Once()
-	mockConfig.On("GetInt", "hashing.argon2id.time", 4).Return(4).Once()
-	mockConfig.On("GetInt", "hashing.argon2id.memory", 65536).Return(65536).Once()
-	mockConfig.On("GetInt", "hashing.argon2id.threads", 1).Return(1).Once()
+	mockConfig := mocksconfig.NewConfig(s.T())
+	mockConfig.EXPECT().GetString("hashing.driver", "argon2id").Return("argon2id").Once()
+	mockConfig.EXPECT().GetInt("hashing.argon2id.time", 4).Return(4).Once()
+	mockConfig.EXPECT().GetInt("hashing.argon2id.memory", 65536).Return(65536).Once()
+	mockConfig.EXPECT().GetInt("hashing.argon2id.threads", 1).Return(1).Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
 
@@ -257,20 +267,20 @@ func (s *ApplicationTestSuite) TestMakeHash() {
 	serviceProvider.Register(s.app)
 
 	s.NotNil(s.app.MakeHash())
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeLang() {
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetString", "app.locale").Return("en").Once()
-	mockConfig.On("GetString", "app.fallback_locale").Return("en").Once()
-	mockConfig.On("GetString", "app.lang_path", "lang").Return("lang").Once()
+	mockConfig := mocksconfig.NewConfig(s.T())
+	mockConfig.EXPECT().GetString("app.locale").Return("en").Once()
+	mockConfig.EXPECT().GetString("app.fallback_locale").Return("en").Once()
+	mockConfig.EXPECT().GetString("app.lang_path", "lang").Return("lang").Once()
+	mockConfig.EXPECT().Get("app.lang_fs").Return(nil).Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
-	s.app.Singleton(frameworklog.Binding, func(app foundation.Application) (any, error) {
-		return &logmocks.Log{}, nil
+	s.app.Singleton(contracts.BindingLog, func(app foundation.Application) (any, error) {
+		return &mockslog.Log{}, nil
 	})
 
 	serviceProvider := &frameworktranslation.ServiceProvider{}
@@ -278,10 +288,18 @@ func (s *ApplicationTestSuite) TestMakeLang() {
 	ctx := http.Background()
 
 	s.NotNil(s.app.MakeLang(ctx))
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeLog() {
+	mockConfig := mocksconfig.NewConfig(s.T())
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
+		return mockConfig, nil
+	})
+
+	mockConfig.EXPECT().GetString("logging.default").Return("").Once()
+
+	s.app.SetJson(mocksfoundation.NewJson(s.T()))
+
 	serviceProvider := &frameworklog.ServiceProvider{}
 	serviceProvider.Register(s.app)
 
@@ -289,11 +307,11 @@ func (s *ApplicationTestSuite) TestMakeLog() {
 }
 
 func (s *ApplicationTestSuite) TestMakeMail() {
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
-		return &configmocks.Config{}, nil
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
+		return &mocksconfig.Config{}, nil
 	})
-	s.app.Singleton(queue.Binding, func(app foundation.Application) (any, error) {
-		return &queuemocks.Queue{}, nil
+	s.app.Singleton(contracts.BindingQueue, func(app foundation.Application) (any, error) {
+		return &mocksqueue.Queue{}, nil
 	})
 
 	serviceProvider := &mail.ServiceProvider{}
@@ -302,60 +320,28 @@ func (s *ApplicationTestSuite) TestMakeMail() {
 	s.NotNil(s.app.MakeMail())
 }
 
-func (s *ApplicationTestSuite) TestMakeOrm() {
-	if env.IsWindows() {
-		s.T().Skip("Skipping tests of using docker")
-	}
-
-	databaseDocker, err := supportdocker.InitDatabase()
-	if err != nil {
-		log.Fatalf("Init docker error: %s", err)
-	}
-
-	mysqlDocker := gorm.NewMysqlDocker(databaseDocker)
-	_, err = mysqlDocker.New()
-	s.Nil(err)
-
-	config := databaseDocker.Mysql.Config()
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetString", "database.default").Return("mysql").Once()
-	mockConfig.On("Get", "database.connections.mysql.read").Return(nil).Once()
-	mockConfig.On("Get", "database.connections.mysql.write").Return(nil).Once()
-	mockConfig.On("GetString", "database.connections.mysql.driver").Return(orm.DriverMysql.String()).Twice()
-	mockConfig.On("GetString", "database.connections.mysql.charset").Return("utf8mb4").Once()
-	mockConfig.On("GetString", "database.connections.mysql.loc").Return("Local").Once()
-	mockConfig.On("GetString", "database.connections.mysql.database").Return(config.Database).Once()
-	mockConfig.On("GetString", "database.connections.mysql.host").Return("localhost").Once()
-	mockConfig.On("GetString", "database.connections.mysql.username").Return(config.Username).Once()
-	mockConfig.On("GetString", "database.connections.mysql.password").Return(config.Password).Once()
-	mockConfig.On("GetString", "database.connections.mysql.prefix").Return("").Once()
-	mockConfig.On("GetInt", "database.connections.mysql.port").Return(config.Port).Once()
-	mockConfig.On("GetBool", "database.connections.mysql.singular").Return(true).Once()
-	mockConfig.On("GetBool", "app.debug").Return(true).Once()
-	mockConfig.On("GetInt", "database.pool.max_idle_conns", 10).Return(10)
-	mockConfig.On("GetInt", "database.pool.max_open_conns", 100).Return(100)
-	mockConfig.On("GetInt", "database.pool.conn_max_idletime", 3600).Return(3600)
-	mockConfig.On("GetInt", "database.pool.conn_max_lifetime", 3600).Return(3600)
-
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+func (s *ApplicationTestSuite) TestMakeQueue() {
+	mockConfig := mocksconfig.NewConfig(s.T())
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
-
-	serviceProvider := &database.ServiceProvider{}
-	serviceProvider.Register(s.app)
-
-	s.NotNil(s.app.MakeOrm())
-	s.Nil(databaseDocker.Stop())
-	mockConfig.AssertExpectations(s.T())
-}
-
-func (s *ApplicationTestSuite) TestMakeQueue() {
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
-		return &configmocks.Config{}, nil
+	s.app.Singleton(contracts.BindingDB, func(app foundation.Application) (any, error) {
+		return &mocksdb.DB{}, nil
+	})
+	s.app.Singleton(contracts.BindingLog, func(app foundation.Application) (any, error) {
+		return &mockslog.Log{}, nil
 	})
 
 	serviceProvider := &queue.ServiceProvider{}
 	serviceProvider.Register(s.app)
+
+	mockConfig.EXPECT().GetString("queue.default").Return("redis").Once()
+	mockConfig.EXPECT().GetString("queue.connections.redis.queue", "default").Return("default").Once()
+	mockConfig.EXPECT().GetInt("queue.connections.redis.concurrent", 1).Return(2).Once()
+	mockConfig.EXPECT().GetString("app.name", "goravel").Return("goravel").Once()
+	mockConfig.EXPECT().GetBool("app.debug").Return(true).Once()
+	mockConfig.EXPECT().GetString("queue.failed.database").Return("mysql").Once()
+	mockConfig.EXPECT().GetString("queue.failed.table").Return("failed_jobs").Once()
 
 	s.NotNil(s.app.MakeQueue())
 }
@@ -368,50 +354,55 @@ func (s *ApplicationTestSuite) TestMakeRateLimiter() {
 }
 
 func (s *ApplicationTestSuite) TestMakeRoute() {
-	mockConfig := &configmocks.Config{}
+	mockConfig := mocksconfig.NewConfig(s.T())
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
 
-	mockRoute := &routemocks.Route{}
-	s.app.Singleton("goravel.route", func(app foundation.Application) (any, error) {
-		return mockRoute, nil
+	s.app.Singleton(contracts.BindingRoute, func(app foundation.Application) (any, error) {
+		return &mocksroute.Route{}, nil
 	})
 
 	s.NotNil(s.app.MakeRoute())
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeSchedule() {
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetBool", "app.debug").Return(false).Once()
+	mockConfig := mocksconfig.NewConfig(s.T())
+	mockConfig.EXPECT().GetBool("app.debug").Return(false).Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
-	s.app.Singleton(console.Binding, func(app foundation.Application) (any, error) {
-		return &consolemocks.Artisan{}, nil
+	s.app.Singleton(contracts.BindingConsole, func(app foundation.Application) (any, error) {
+		return &mocksconsole.Artisan{}, nil
 	})
-	s.app.Singleton(frameworklog.Binding, func(app foundation.Application) (any, error) {
-		return &logmocks.Log{}, nil
+	s.app.Singleton(contracts.BindingLog, func(app foundation.Application) (any, error) {
+		return &mockslog.Log{}, nil
+	})
+	s.app.Singleton(contracts.BindingCache, func(app foundation.Application) (any, error) {
+		return &mockscache.Cache{}, nil
 	})
 
 	serviceProvider := &schedule.ServiceProvider{}
 	serviceProvider.Register(s.app)
 
 	s.NotNil(s.app.MakeSchedule())
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeSession() {
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetInt", "session.lifetime").Return(120).Once()
-	mockConfig.On("GetString", "session.files").Return("storage/framework/sessions").Once()
+	mockConfig := mocksconfig.NewConfig(s.T())
+	mockConfig.EXPECT().GetString("session.driver", "file").Return("file").Once()
+	mockConfig.EXPECT().GetString("session.drivers.file.driver").Return("file").Once()
+	mockConfig.EXPECT().GetInt("session.lifetime", 120).Return(120).Once()
+	mockConfig.EXPECT().GetInt("session.gc_interval", 30).Return(30).Once()
+	mockConfig.EXPECT().GetString("session.files").Return("framework/sessions").Once()
+	mockConfig.EXPECT().GetString("session.cookie").Return("goravel_session").Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
+	s.app.SetJson(mocksfoundation.NewJson(s.T()))
 
 	serviceProvider := &frameworksession.ServiceProvider{}
 	// error
@@ -419,18 +410,16 @@ func (s *ApplicationTestSuite) TestMakeSession() {
 
 	serviceProvider.Register(s.app)
 	s.NotNil(s.app.MakeSession())
-
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeStorage() {
-	mockConfig := &configmocks.Config{}
-	mockConfig.On("GetString", "filesystems.default").Return("local").Once()
-	mockConfig.On("GetString", "filesystems.disks.local.driver").Return("local").Once()
-	mockConfig.On("GetString", "filesystems.disks.local.root").Return("").Once()
-	mockConfig.On("GetString", "filesystems.disks.local.url").Return("").Once()
+	mockConfig := mocksconfig.NewConfig(s.T())
+	mockConfig.EXPECT().GetString("filesystems.default").Return("local").Once()
+	mockConfig.EXPECT().GetString("filesystems.disks.local.driver").Return("local").Once()
+	mockConfig.EXPECT().GetString("filesystems.disks.local.root").Return("").Once()
+	mockConfig.EXPECT().GetString("filesystems.disks.local.url").Return("").Once()
 
-	s.app.Singleton(frameworkconfig.Binding, func(app foundation.Application) (any, error) {
+	s.app.Singleton(contracts.BindingConfig, func(app foundation.Application) (any, error) {
 		return mockConfig, nil
 	})
 
@@ -438,7 +427,6 @@ func (s *ApplicationTestSuite) TestMakeStorage() {
 	serviceProvider.Register(s.app)
 
 	s.NotNil(s.app.MakeStorage())
-	mockConfig.AssertExpectations(s.T())
 }
 
 func (s *ApplicationTestSuite) TestMakeValidation() {

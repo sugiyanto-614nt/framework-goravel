@@ -18,7 +18,9 @@ type ContextRequest interface {
 	Headers() http.Header
 	// Method retrieves the HTTP request method (e.g., GET, POST, PUT).
 	Method() string
-	// Path retrieves the current path information for the request.
+	// OriginPath retrieves the original path of the request: /users/{id}
+	OriginPath() string
+	// Path retrieves the current path information for the request: /users/1
 	Path() string
 	// Url retrieves the URL (excluding the query string) for the request.
 	Url() string
@@ -65,17 +67,23 @@ type ContextRequest interface {
 	// Input retrieves data from the request in the following order: JSON, form, query, and route parameters.
 	Input(key string, defaultValue ...string) string
 	InputArray(key string, defaultValue ...[]string) []string
-	InputMap(key string, defaultValue ...map[string]string) map[string]string
+	InputMap(key string, defaultValue ...map[string]any) map[string]any
+	InputMapArray(key string, defaultValue ...[]map[string]any) []map[string]any
 	InputInt(key string, defaultValue ...int) int
 	InputInt64(key string, defaultValue ...int64) int64
 	InputBool(key string, defaultValue ...bool) bool
 	// File retrieves a file by its key from the request.
 	File(name string) (filesystem.File, error)
+	Files(name string) ([]filesystem.File, error)
 
+	// Abort aborts the request with the specified HTTP status code, default is 400.
+	Abort(code ...int)
 	// AbortWithStatus aborts the request with the specified HTTP status code.
+	// DEPRECATED: Use Abort instead.
 	AbortWithStatus(code int)
 	// AbortWithStatusJson aborts the request with the specified HTTP status code
 	// and returns a JSON response object.
+	// DEPRECATED: Use Response().Json().Abort() instead.
 	AbortWithStatusJson(code int, jsonObj any)
 	// Next skips the current request handler, allowing the next middleware or handler to be executed.
 	Next()
@@ -94,12 +102,24 @@ type FormRequest interface {
 	Authorize(ctx Context) error
 	// Rules get the validation rules that apply to the request.
 	Rules(ctx Context) map[string]string
+}
+
+type FormRequestWithFilters interface {
 	// Filters get the custom filters that apply to the request.
 	Filters(ctx Context) map[string]string
+}
+
+type FormRequestWithMessages interface {
 	// Messages get the validation messages that apply to the request.
 	Messages(ctx Context) map[string]string
+}
+
+type FormRequestWithAttributes interface {
 	// Attributes get custom attributes for validator errors.
 	Attributes(ctx Context) map[string]string
+}
+
+type FormRequestWithPrepareForValidation interface {
 	// PrepareForValidation prepare the data for validation.
 	PrepareForValidation(ctx Context, data validation.Data) error
 }

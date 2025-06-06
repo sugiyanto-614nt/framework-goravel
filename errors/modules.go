@@ -1,0 +1,27 @@
+package errors
+
+var (
+	ModuleAuth       = "auth"
+	ModuleCache      = "cache"
+	ModuleConsole    = "console"
+	ModuleCrypt      = "crypt"
+	ModuleDB         = "db"
+	ModuleEvent      = "event"
+	ModuleFacade     = "facade"
+	ModuleFilesystem = "filesystem"
+	ModuleGrpc       = "grpc"
+	ModuleHash       = "hash"
+	ModuleHttp       = "http"
+	ModuleLang       = "lang"
+	ModuleLog        = "log"
+	ModuleMail       = "mail"
+	ModuleMigration  = "migration"
+	ModuleOrm        = "orm"
+	ModulePackages   = "packages"
+	ModuleQueue      = "queue"
+	ModuleRoute      = "route"
+	ModuleSchema     = "schema"
+	ModuleSchedule   = "schedule"
+	ModuleSession    = "session"
+	ModuleTesting    = "testing"
+)

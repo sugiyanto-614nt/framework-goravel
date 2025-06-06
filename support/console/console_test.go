@@ -1,16 +1,19 @@
 package console
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/pterm/pterm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	consolemocks "github.com/goravel/framework/mocks/console"
+	"github.com/goravel/framework/errors"
+	mocksconsole "github.com/goravel/framework/mocks/console"
+	"github.com/goravel/framework/support/color"
 	"github.com/goravel/framework/support/file"
 )
 
@@ -38,6 +41,16 @@ func (s *MakeTestSuite) TestGetFilePath() {
 	s.Equal(filepath.Join(pwd, s.make.root, "user", "lowercase.go"), s.make.GetFilePath())
 }
 
+func (s *MakeTestSuite) TestGetSignature() {
+	s.Equal("Lowercase", s.make.GetSignature())
+
+	s.make.name = "user/Lowercase"
+	s.Equal("UserLowercase", s.make.GetSignature())
+
+	s.make.name = "user/Lowercase/Uppercase"
+	s.Equal("UserLowercaseUppercase", s.make.GetSignature())
+}
+
 func (s *MakeTestSuite) TestGetStructName() {
 	s.Equal("Lowercase", s.make.GetStructName())
 
@@ -46,6 +59,16 @@ func (s *MakeTestSuite) TestGetStructName() {
 
 	s.make.name = "user/Lowercase"
 	s.Equal("Lowercase", s.make.GetStructName())
+}
+
+func (s *MakeTestSuite) TestGetPackageImportPath() {
+	s.Contains(s.make.GetPackageImportPath(), "/app/rules")
+
+	s.make.name = "user/Lowercase"
+	s.Contains(s.make.GetPackageImportPath(), "/app/rules/user")
+
+	s.make.name = "user/Lowercase/Uppercase"
+	s.Contains(s.make.GetPackageImportPath(), "/app/rules/user/Lowercase")
 }
 
 func (s *MakeTestSuite) TestGetPackageName() {
@@ -66,7 +89,7 @@ func TestNewMake(t *testing.T) {
 	var (
 		name string
 
-		mockCtx = &consolemocks.Context{}
+		mockCtx = mocksconsole.NewContext(t)
 		ttype   = "rule"
 		root    = filepath.Join("app", "rules")
 	)
@@ -81,26 +104,26 @@ func TestNewMake(t *testing.T) {
 			name: "Sad path - name is empty",
 			setup: func() {
 				name = ""
-				mockCtx.EXPECT().Ask("Enter the rule name", mock.Anything).Return("", errors.New("the rule name cannot be empty")).Once()
+				mockCtx.EXPECT().Ask("Enter the rule name", mock.Anything).Return("", errors.ConsoleEmptyFieldValue.Args("rule")).Once()
 			},
 			expectMake:  nil,
-			expectError: errors.New("the rule name cannot be empty"),
+			expectError: errors.ConsoleEmptyFieldValue.Args("rule"),
 		},
 		{
 			name: "Sad path - name already exists",
 			setup: func() {
 				name = "Uppercase"
-				assert.Nil(t, file.Create(filepath.Join(root, "uppercase.go"), ""))
+				assert.Nil(t, file.PutContent(filepath.Join(root, "uppercase.go"), ""))
 				mockCtx.EXPECT().OptionBool("force").Return(false).Once()
 			},
 			expectMake:  nil,
-			expectError: errors.New("the rule already exists. Use the --force or -f flag to overwrite"),
+			expectError: errors.ConsoleFileAlreadyExists.Args("rule"),
 		},
 		{
 			name: "Happy path - name already exists, but force is true",
 			setup: func() {
 				name = "Uppercase"
-				assert.Nil(t, file.Create(filepath.Join(root, "uppercase.go"), ""))
+				assert.Nil(t, file.PutContent(filepath.Join(root, "uppercase.go"), ""))
 				mockCtx.EXPECT().OptionBool("force").Return(true).Once()
 			},
 			expectMake:  &Make{name: "Lowercase", root: root},
@@ -128,8 +151,94 @@ func TestNewMake(t *testing.T) {
 				assert.NotNil(t, m)
 				assert.Nil(t, file.Remove("app"))
 			}
+		})
+	}
+}
 
-			mockCtx.AssertExpectations(t)
+func TestConfirmToProceed(t *testing.T) {
+	var (
+		mockCtx *mocksconsole.Context
+	)
+
+	beforeEach := func() {
+		mockCtx = mocksconsole.NewContext(t)
+	}
+
+	tests := []struct {
+		name         string
+		env          string
+		setup        func()
+		expectResult bool
+	}{
+		{
+			name:         "env is not production",
+			setup:        func() {},
+			expectResult: true,
+		},
+		{
+			name: "the force option is true",
+			env:  "production",
+			setup: func() {
+				mockCtx.EXPECT().OptionBool("force").Return(true).Once()
+			},
+			expectResult: true,
+		},
+		{
+			name: "confirm returns false",
+			env:  "production",
+			setup: func() {
+				mockCtx.EXPECT().OptionBool("force").Return(false).Once()
+				mockCtx.EXPECT().Confirm("Are you sure you want to run this command?").Return(false).Once()
+			},
+			expectResult: false,
+		},
+		{
+			name: "confirm returns true",
+			env:  "production",
+			setup: func() {
+				mockCtx.EXPECT().OptionBool("force").Return(false).Once()
+				mockCtx.EXPECT().Confirm("Are you sure you want to run this command?").Return(true).Once()
+			},
+			expectResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			beforeEach()
+			tt.setup()
+			result := ConfirmToProceed(mockCtx, tt.env)
+
+			assert.Equal(t, tt.expectResult, result)
+		})
+	}
+}
+
+func TestTwoColumnDetail(t *testing.T) {
+	tests := []struct {
+		name   string
+		first  string
+		second string
+		output string
+	}{
+		{
+			name:  "only has first column",
+			first: color.Yellow().Sprint("Name"),
+			output: "  " + color.Yellow().Sprint("Name") + " " +
+				color.Gray().Sprint(strings.Repeat(".", pterm.GetTerminalWidth()-len("Name")-5)) + "  ",
+		},
+		{
+			name:   "has first and second column",
+			first:  "Test",
+			second: color.Green().Sprint("Passed"),
+			output: "  Test " + color.Gray().Sprint(
+				strings.Repeat(".", pterm.GetTerminalWidth()-len("Test")-len("Passed")-6),
+			) + " " + color.Green().Sprint("Passed") + "  ",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.output, TwoColumnDetail(tt.first, tt.second))
 		})
 	}
 }

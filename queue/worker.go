@@ -1,59 +1,288 @@
 package queue
 
 import (
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/RichardKnop/machinery/v2"
+
+	"github.com/goravel/framework/contracts/database/db"
+	"github.com/goravel/framework/contracts/foundation"
 	"github.com/goravel/framework/contracts/log"
 	"github.com/goravel/framework/contracts/queue"
+	"github.com/goravel/framework/errors"
+	"github.com/goravel/framework/queue/models"
+	"github.com/goravel/framework/queue/utils"
+	"github.com/goravel/framework/support/carbon"
+	"github.com/goravel/framework/support/color"
+	"github.com/goravel/framework/support/console"
 )
 
-const DriverSync string = "sync"
-const DriverRedis string = "redis"
-
 type Worker struct {
-	concurrent int
+	config queue.Config
+	db     db.DB
+	driver queue.Driver
+	job    queue.JobStorer
+	json   foundation.Json
+	log    log.Log
+
 	connection string
-	machinery  *Machinery
-	jobs       []queue.Job
 	queue      string
+	concurrent int
+	debug      bool
+
+	currentDelay  time.Duration
+	failedJobChan chan models.FailedJob
+	isShutdown    atomic.Bool
+	maxDelay      time.Duration
+	machinery     *machinery.Worker
+	wg            sync.WaitGroup
 }
 
-func NewWorker(config *Config, log log.Log, concurrent int, connection string, jobs []queue.Job, queue string) *Worker {
-	return &Worker{
-		concurrent: concurrent,
-		connection: connection,
-		machinery:  NewMachinery(config, log),
-		jobs:       jobs,
-		queue:      queue,
-	}
-}
-
-func (receiver *Worker) Run() error {
-	server, err := receiver.machinery.Server(receiver.connection, receiver.queue)
+func NewWorker(config queue.Config, db db.DB, job queue.JobStorer, json foundation.Json, log log.Log, connection, queue string, concurrent int) (*Worker, error) {
+	driverCreator := NewDriverCreator(config, db, job, json, log)
+	driver, err := driverCreator.Create(connection)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if server == nil {
+
+	return &Worker{
+		config: config,
+		db:     db,
+		driver: driver,
+		job:    job,
+		json:   json,
+		log:    log,
+
+		connection: connection,
+		queue:      queue,
+		concurrent: concurrent,
+		debug:      config.Debug(),
+
+		currentDelay:  1 * time.Second,
+		failedJobChan: make(chan models.FailedJob, concurrent),
+		maxDelay:      32 * time.Second,
+	}, nil
+}
+
+func (r *Worker) Run() error {
+	if r.driver.Driver() == queue.DriverSync {
+		color.Warningln(errors.QueueDriverSyncNotNeedToRun.Args(r.connection).SetModule(errors.ModuleQueue).Error())
 		return nil
 	}
 
-	jobTasks, err := jobs2Tasks(receiver.jobs)
+	r.isShutdown.Store(false)
+
+	if r.driver.Driver() == queue.DriverMachinery {
+		return r.RunMachinery()
+	}
+
+	return r.run()
+}
+
+// RunMachinery will be removed in v1.17
+func (r *Worker) RunMachinery() error {
+	instance := NewMachinery(r.config, r.log, r.connection)
+
+	var (
+		worker *machinery.Worker
+		err    error
+	)
+
+	worker, err = instance.Run(r.job.All(), r.queue, r.concurrent)
 	if err != nil {
 		return err
 	}
 
-	if err := server.RegisterTasks(jobTasks); err != nil {
-		return err
+	r.machinery = worker
+
+	return nil
+}
+
+func (r *Worker) Shutdown() error {
+	r.isShutdown.Store(true)
+	close(r.failedJobChan)
+
+	if r.machinery != nil {
+		r.machinery.Quit()
 	}
 
-	if receiver.queue == "" {
-		receiver.queue = server.GetConfig().DefaultQueue
+	return nil
+}
+
+func (r *Worker) call(task queue.Task) error {
+	r.printRunningLog(task)
+
+	if !task.Delay.IsZero() {
+		time.Sleep(carbon.FromStdTime(task.Delay).DiffAbsInDuration())
 	}
-	if receiver.concurrent == 0 {
-		receiver.concurrent = 1
+
+	now := carbon.Now()
+	err := r.job.Call(task.Job.Signature(), utils.ConvertArgs(task.Args))
+	duration := now.DiffAbsInDuration().String()
+
+	if err != nil {
+		payload, jsonErr := utils.TaskToJson(task, r.json)
+		if jsonErr != nil {
+			return errors.QueueFailedToConvertTaskToJson.Args(jsonErr, task)
+		}
+
+		r.failedJobChan <- models.FailedJob{
+			UUID:       task.UUID,
+			Connection: r.connection,
+			Queue:      r.queue,
+			Payload:    payload,
+			Exception:  err.Error(),
+			FailedAt:   carbon.NewDateTime(carbon.Now()),
+		}
+
+		r.printFailedLog(task, duration)
+
+		return errors.QueueFailedToCallJob
 	}
-	worker := server.NewWorker(receiver.queue, receiver.concurrent)
-	if err := worker.Launch(); err != nil {
-		return err
+
+	r.printSuccessLog(task, duration)
+
+	return nil
+}
+
+func (r *Worker) logFailedJob(job models.FailedJob) {
+	failedDatabase := r.config.FailedDatabase()
+	failedTable := r.config.FailedTable()
+
+	isDbDisabled := r.db == nil || failedDatabase == "" || failedTable == ""
+	if isDbDisabled {
+		r.log.Error(errors.QueueJobFailed.Args(job))
+		return
 	}
+
+	_, err := r.db.Connection(failedDatabase).Table(failedTable).Insert(&job)
+	if err != nil {
+		r.log.Error(errors.QueueFailedToSaveFailedJob.Args(err, job))
+	}
+}
+
+func (r *Worker) printRunningLog(task queue.Task) {
+	if !r.debug {
+		return
+	}
+
+	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeString())
+	status := "<fg=yellow;op=bold>RUNNING</>"
+	first := datetime + " " + task.Job.Signature()
+	second := status
+
+	color.Default().Println(console.TwoColumnDetail(first, second))
+}
+
+func (r *Worker) printSuccessLog(task queue.Task, duration string) {
+	if !r.debug {
+		return
+	}
+
+	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeString())
+	status := "<fg=green;op=bold>DONE</>"
+	duration = color.Gray().Sprint(duration)
+	first := datetime + " " + task.Job.Signature()
+	second := duration + " " + status
+
+	color.Default().Println(console.TwoColumnDetail(first, second))
+}
+
+func (r *Worker) printFailedLog(task queue.Task, duration string) {
+	if !r.debug {
+		return
+	}
+
+	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeString())
+	status := "<fg=red;op=bold>FAIL</>"
+	duration = color.Gray().Sprint(duration)
+	first := datetime + " " + task.Job.Signature()
+	second := duration + " " + status
+
+	color.Default().Println(console.TwoColumnDetail(first, second))
+}
+
+func (r *Worker) run() error {
+	if r.debug {
+		color.Infoln(errors.QueueProcessingJobs.Args(r.connection, r.queue))
+	}
+
+	for i := 0; i < r.concurrent; i++ {
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+			for {
+				if r.isShutdown.Load() {
+					return
+				}
+
+				reservedJob, err := r.driver.Pop(r.queue)
+				if err != nil {
+					if !errors.Is(err, errors.QueueDriverNoJobFound) {
+						r.log.Error(errors.QueueDriverFailedToPop.Args(r.queue, err))
+
+						r.currentDelay *= 2
+						if r.currentDelay > r.maxDelay {
+							r.currentDelay = r.maxDelay
+						}
+					}
+
+					time.Sleep(r.currentDelay)
+
+					continue
+				}
+
+				r.currentDelay = 1 * time.Second
+				task := reservedJob.Task()
+
+				if err := r.call(task); err != nil {
+					if !errors.Is(err, errors.QueueFailedToCallJob) {
+						r.log.Error(err)
+					}
+
+					if err := reservedJob.Delete(); err != nil {
+						r.log.Error(errors.QueueFailedToDeleteReservedJob.Args(reservedJob, err))
+					}
+
+					continue
+				}
+
+				if len(task.Chain) > 0 {
+					for i, chain := range task.Chain {
+						chainTask := queue.Task{
+							ChainJob: chain,
+							UUID:     task.UUID,
+							Chain:    task.Chain[i+1:],
+						}
+
+						if err := r.call(chainTask); err != nil {
+							if !errors.Is(err, errors.QueueFailedToCallJob) {
+								r.log.Error(err)
+							}
+							break
+						}
+					}
+				}
+
+				if err := reservedJob.Delete(); err != nil {
+					r.log.Error(errors.QueueFailedToDeleteReservedJob.Args(reservedJob, err))
+				}
+			}
+		}()
+	}
+
+	r.wg.Add(1)
+
+	go func() {
+		defer r.wg.Done()
+		for job := range r.failedJobChan {
+			r.logFailedJob(job)
+		}
+	}()
+
+	r.wg.Wait()
 
 	return nil
 }

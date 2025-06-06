@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 
 	"github.com/goravel/framework/contracts/config"
 	"github.com/goravel/framework/contracts/foundation"
+	"github.com/goravel/framework/support/carbon"
+	"github.com/goravel/framework/support/str"
 )
 
 type General struct {
@@ -44,12 +45,7 @@ func (general *General) Format(entry *logrus.Entry) ([]byte, error) {
 		b = &bytes.Buffer{}
 	}
 
-	cstSh, err := time.LoadLocation(general.config.GetString("app.timezone"))
-	if err != nil {
-		return nil, err
-	}
-
-	timestamp := entry.Time.In(cstSh).Format("2006-01-02 15:04:05")
+	timestamp := carbon.FromStdTime(entry.Time).ToDateTimeString()
 	b.WriteString(fmt.Sprintf("[%s] %s.%s: %s\n", timestamp, general.config.GetString("app.env"), entry.Level, entry.Message))
 	data := entry.Data
 	if len(data) > 0 {
@@ -69,12 +65,12 @@ func (general *General) formatData(data logrus.Fields) (string, error) {
 	if len(data) > 0 {
 		removedData := deleteKey(data, "root")
 		if len(removedData) > 0 {
-			removedDataBytes, err := general.json.Marshal(removedData)
+			removedDataStr, err := general.json.MarshalString(removedData)
 			if err != nil {
 				return "", err
 			}
 
-			builder.WriteString(fmt.Sprintf("fields: %s\n", string(removedDataBytes)))
+			builder.WriteString(fmt.Sprintf("fields: %s\n", removedDataStr))
 		}
 
 		root, err := cast.ToStringMapE(data["root"])
@@ -82,14 +78,9 @@ func (general *General) formatData(data logrus.Fields) (string, error) {
 			return "", err
 		}
 
-		for _, key := range []string{"code", "context", "domain", "hint", "owner", "request", "response", "tags", "user"} {
+		for _, key := range []string{"hint", "tags", "owner", "context", "with", "domain", "code", "request", "response", "user"} {
 			if value, exists := root[key]; exists && value != nil {
-				v, err := general.json.Marshal(value)
-				if err != nil {
-					return "", err
-				}
-
-				builder.WriteString(fmt.Sprintf("%s: %v\n", key, string(v)))
+				builder.WriteString(fmt.Sprintf("[%s] %+v\n", str.Of(key).UcFirst().String(), value))
 			}
 		}
 
@@ -118,15 +109,28 @@ func (general *General) formatStackTraces(stackTraces any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	formattedTraces.WriteString("trace:\n")
+	formattedTraces.WriteString("[Trace]\n")
 	root := traces.Root
 	if len(root.Stack) > 0 {
 		for _, stackStr := range root.Stack {
-			formattedTraces.WriteString(fmt.Sprintf("\t%s\n", stackStr))
+			formattedTraces.WriteString(formatStackTrace(stackStr))
 		}
 	}
 
 	return formattedTraces.String(), nil
+}
+
+func formatStackTrace(stackStr string) string {
+	lastColon := strings.LastIndex(stackStr, ":")
+	if lastColon > 0 && lastColon < len(stackStr)-1 {
+		secondLastColon := strings.LastIndex(stackStr[:lastColon], ":")
+		if secondLastColon > 0 {
+			fileLine := stackStr[secondLastColon+1:]
+			method := stackStr[:secondLastColon]
+			return fmt.Sprintf("%s [%s]\n", fileLine, method)
+		}
+	}
+	return fmt.Sprintf("%s\n", stackStr)
 }
 
 func deleteKey(data logrus.Fields, keyToDelete string) logrus.Fields {

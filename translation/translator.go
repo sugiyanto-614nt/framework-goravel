@@ -13,17 +13,19 @@ import (
 	"github.com/goravel/framework/contracts/http"
 	logcontract "github.com/goravel/framework/contracts/log"
 	translationcontract "github.com/goravel/framework/contracts/translation"
+	"github.com/goravel/framework/errors"
 )
 
 type Translator struct {
-	ctx      context.Context
-	loader   translationcontract.Loader
-	locale   string
-	fallback string
-	selector *MessageSelector
-	key      string
-	logger   logcontract.Log
-	mu       sync.Mutex
+	ctx        context.Context
+	fsLoader   translationcontract.Loader
+	fileLoader translationcontract.Loader
+	locale     string
+	fallback   string
+	selector   *MessageSelector
+	key        string
+	logger     logcontract.Log
+	mu         sync.Mutex
 }
 
 // loaded is a map structure used to store loaded translation data.
@@ -37,17 +39,20 @@ var loaded = make(map[string]map[string]map[string]any)
 // contextKey is an unexported type for keys defined in this package.
 type contextKey string
 
-const fallbackLocaleKey = contextKey("fallback_locale")
-const localeKey = contextKey("locale")
+const (
+	fallbackLocaleKey = contextKey("fallback_locale")
+	localeKey         = contextKey("locale")
+)
 
-func NewTranslator(ctx context.Context, loader translationcontract.Loader, locale string, fallback string, logger logcontract.Log) *Translator {
+func NewTranslator(ctx context.Context, fsLoader translationcontract.Loader, fileLoader translationcontract.Loader, locale string, fallback string, logger logcontract.Log) *Translator {
 	return &Translator{
-		ctx:      ctx,
-		loader:   loader,
-		locale:   locale,
-		fallback: fallback,
-		selector: NewMessageSelector(),
-		logger:   logger,
+		ctx:        ctx,
+		fsLoader:   fsLoader,
+		fileLoader: fileLoader,
+		locale:     locale,
+		fallback:   fallback,
+		selector:   NewMessageSelector(),
+		logger:     logger,
 	}
 }
 
@@ -156,7 +161,7 @@ func (t *Translator) SetLocale(locale string) context.Context {
 }
 
 func (t *Translator) getLine(locale string, group string, key string, options ...translationcontract.Option) string {
-	if err := t.load(locale, group); err != nil && err != ErrFileNotExist {
+	if err := t.load(locale, group); err != nil && !errors.Is(err, errors.LangFileNotExist) {
 		t.logger.Panic(err)
 		return t.key
 	}
@@ -186,7 +191,10 @@ func (t *Translator) load(locale string, group string) error {
 		return nil
 	}
 
-	translations, err := t.loader.Load(locale, group)
+	translations, err := t.fileLoader.Load(locale, group)
+	if err != nil && t.fsLoader != nil {
+		translations, err = t.fsLoader.Load(locale, group)
+	}
 	if err != nil {
 		return err
 	}

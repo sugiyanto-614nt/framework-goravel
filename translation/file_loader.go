@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/goravel/framework/contracts/foundation"
+	contractstranslation "github.com/goravel/framework/contracts/translation"
+	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support/file"
 )
 
@@ -13,7 +15,7 @@ type FileLoader struct {
 	json  foundation.Json
 }
 
-func NewFileLoader(paths []string, json foundation.Json) *FileLoader {
+func NewFileLoader(paths []string, json foundation.Json) contractstranslation.Loader {
 	return &FileLoader{
 		paths: paths,
 		json:  json,
@@ -39,5 +41,5 @@ func (f *FileLoader) Load(locale string, group string) (map[string]any, error) {
 			return val, nil
 		}
 	}
-	return nil, ErrFileNotExist
+	return nil, errors.LangFileNotExist
 }

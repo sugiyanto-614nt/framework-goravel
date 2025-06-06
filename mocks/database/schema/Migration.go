@@ -17,54 +17,22 @@ func (_m *Migration) EXPECT() *Migration_Expecter {
 	return &Migration_Expecter{mock: &_m.Mock}
 }
 
-// Connection provides a mock function with given fields:
-func (_m *Migration) Connection() string {
+// Down provides a mock function with no fields
+func (_m *Migration) Down() error {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for Connection")
+		panic("no return value specified for Down")
 	}
 
-	var r0 string
-	if rf, ok := ret.Get(0).(func() string); ok {
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(string)
+		r0 = ret.Error(0)
 	}
 
 	return r0
-}
-
-// Migration_Connection_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Connection'
-type Migration_Connection_Call struct {
-	*mock.Call
-}
-
-// Connection is a helper method to define mock.On call
-func (_e *Migration_Expecter) Connection() *Migration_Connection_Call {
-	return &Migration_Connection_Call{Call: _e.mock.On("Connection")}
-}
-
-func (_c *Migration_Connection_Call) Run(run func()) *Migration_Connection_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *Migration_Connection_Call) Return(_a0 string) *Migration_Connection_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *Migration_Connection_Call) RunAndReturn(run func() string) *Migration_Connection_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Down provides a mock function with given fields:
-func (_m *Migration) Down() {
-	_m.Called()
 }
 
 // Migration_Down_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Down'
@@ -84,17 +52,17 @@ func (_c *Migration_Down_Call) Run(run func()) *Migration_Down_Call {
 	return _c
 }
 
-func (_c *Migration_Down_Call) Return() *Migration_Down_Call {
-	_c.Call.Return()
+func (_c *Migration_Down_Call) Return(_a0 error) *Migration_Down_Call {
+	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *Migration_Down_Call) RunAndReturn(run func()) *Migration_Down_Call {
+func (_c *Migration_Down_Call) RunAndReturn(run func() error) *Migration_Down_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// Signature provides a mock function with given fields:
+// Signature provides a mock function with no fields
 func (_m *Migration) Signature() string {
 	ret := _m.Called()
 
@@ -139,9 +107,22 @@ func (_c *Migration_Signature_Call) RunAndReturn(run func() string) *Migration_S
 	return _c
 }
 
-// Up provides a mock function with given fields:
-func (_m *Migration) Up() {
-	_m.Called()
+// Up provides a mock function with no fields
+func (_m *Migration) Up() error {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Up")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // Migration_Up_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Up'
@@ -161,12 +142,12 @@ func (_c *Migration_Up_Call) Run(run func()) *Migration_Up_Call {
 	return _c
 }
 
-func (_c *Migration_Up_Call) Return() *Migration_Up_Call {
-	_c.Call.Return()
+func (_c *Migration_Up_Call) Return(_a0 error) *Migration_Up_Call {
+	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *Migration_Up_Call) RunAndReturn(run func()) *Migration_Up_Call {
+func (_c *Migration_Up_Call) RunAndReturn(run func() error) *Migration_Up_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -4,17 +4,18 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/support/color"
+	supportconsole "github.com/goravel/framework/support/console"
 )
 
 type CliContext struct {
-	instance *cli.Context
+	instance *cli.Command
 }
 
-func NewCliContext(instance *cli.Context) *CliContext {
+func NewCliContext(instance *cli.Command) *CliContext {
 	return &CliContext{instance}
 }
 
@@ -99,33 +100,40 @@ func (r *CliContext) Choice(question string, choices []console.Choice, option ..
 }
 
 func (r *CliContext) Comment(message string) {
-	color.Gray().Println(message)
+	color.Debugln(message)
 }
 
-func (r *CliContext) Confirm(question string, option ...console.ConfirmOption) (bool, error) {
-	var answer bool
+func (r *CliContext) Confirm(question string, option ...console.ConfirmOption) bool {
+	input := huh.NewConfirm().Title(question)
+	answer := false
 	if len(option) > 0 {
+		if len(option[0].Description) > 0 {
+			input.Description(option[0].Description)
+		}
+		if len(option[0].Affirmative) > 0 {
+			input.Affirmative(option[0].Affirmative)
+		}
+		if len(option[0].Negative) > 0 {
+			input.Negative(option[0].Negative)
+		}
 		answer = option[0].Default
 	}
 
-	input := huh.NewConfirm().Title(question)
-	if len(option) > 0 {
-		input.Description(option[0].Description).Affirmative(option[0].Affirmative).Negative(option[0].Negative)
-	}
-	err := input.Value(&answer).Run()
-	if err != nil {
-		return false, err
+	if err := input.Value(&answer).Run(); err != nil {
+		r.Error(err.Error())
+
+		return false
 	}
 
-	return answer, nil
+	return answer
 }
 
 func (r *CliContext) Error(message string) {
-	color.Red().Println(message)
+	color.Errorln(message)
 }
 
 func (r *CliContext) Info(message string) {
-	color.Green().Println(message)
+	color.Infoln(message)
 }
 
 func (r *CliContext) Line(message string) {
@@ -141,7 +149,7 @@ func (r *CliContext) MultiSelect(question string, choices []console.Choice, opti
 
 	options := make([]huh.Option[string], len(choices))
 	for i, choice := range choices {
-		options[i] = huh.NewOption[string](choice.Key, choice.Value).Selected(choice.Selected)
+		options[i] = huh.NewOption(choice.Key, choice.Value).Selected(choice.Selected)
 	}
 
 	input := huh.NewMultiSelect[string]().Title(question).Options(options...)
@@ -183,11 +191,11 @@ func (r *CliContext) OptionBool(key string) bool {
 }
 
 func (r *CliContext) OptionFloat64(key string) float64 {
-	return r.instance.Float64(key)
+	return r.instance.Float(key)
 }
 
 func (r *CliContext) OptionFloat64Slice(key string) []float64 {
-	return r.instance.Float64Slice(key)
+	return r.instance.FloatSlice(key)
 }
 
 func (r *CliContext) OptionInt(key string) int {
@@ -244,8 +252,12 @@ func (r *CliContext) Spinner(message string, option console.SpinnerOption) error
 	return err
 }
 
+func (r *CliContext) Success(message string) {
+	color.Successln(message)
+}
+
 func (r *CliContext) Warning(message string) {
-	color.Yellow().Println(message)
+	color.Warningln(message)
 }
 
 func (r *CliContext) WithProgressBar(items []any, callback func(any) error) ([]any, error) {
@@ -269,4 +281,8 @@ func (r *CliContext) WithProgressBar(items []any, callback func(any) error) ([]a
 	}
 
 	return items, nil
+}
+
+func (r *CliContext) TwoColumnDetail(first, second string, filler ...rune) {
+	r.Line(supportconsole.TwoColumnDetail(first, second, filler...))
 }

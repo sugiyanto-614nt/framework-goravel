@@ -2,15 +2,19 @@ package gorm
 
 import (
 	"gorm.io/gorm"
+
+	"github.com/goravel/framework/contracts/log"
 )
 
 type ToSql struct {
-	query *QueryImpl
+	log   log.Log
+	query *Query
 	raw   bool
 }
 
-func NewToSql(query *QueryImpl, raw bool) *ToSql {
+func NewToSql(query *Query, log log.Log, raw bool) *ToSql {
 	return &ToSql{
+		log:   log,
 		query: query,
 		raw:   raw,
 	}
@@ -29,10 +33,15 @@ func (r *ToSql) Create(value any) string {
 	return r.sql(query.instance.Session(&gorm.Session{DryRun: true}).Create(value))
 }
 
-func (r *ToSql) Delete(value any, conds ...any) string {
+func (r *ToSql) Delete(value ...any) string {
 	query := r.query.buildConditions()
 
-	return r.sql(query.instance.Session(&gorm.Session{DryRun: true}).Delete(value, conds...))
+	var dest any
+	if len(value) > 0 {
+		dest = value[0]
+	}
+
+	return r.sql(query.instance.Session(&gorm.Session{DryRun: true}).Delete(dest))
 }
 
 func (r *ToSql) Find(dest any, conds ...any) string {
@@ -45,6 +54,17 @@ func (r *ToSql) First(dest any) string {
 	query := r.query.buildConditions()
 
 	return r.sql(query.instance.Session(&gorm.Session{DryRun: true}).First(dest))
+}
+
+func (r *ToSql) ForceDelete(value ...any) string {
+	query := r.query.buildConditions()
+
+	var dest any
+	if len(value) > 0 {
+		dest = value[0]
+	}
+
+	return r.sql(query.instance.Session(&gorm.Session{DryRun: true}).Unscoped().Delete(dest))
 }
 
 func (r *ToSql) Get(dest any) string {
@@ -89,6 +109,9 @@ func (r *ToSql) Update(column any, value ...any) string {
 
 func (r *ToSql) sql(db *gorm.DB) string {
 	sql := db.Statement.SQL.String()
+	if db.Statement.Error != nil {
+		r.log.Errorf("failed to get sql: %v", db.Statement.Error)
+	}
 	if !r.raw {
 		return sql
 	}

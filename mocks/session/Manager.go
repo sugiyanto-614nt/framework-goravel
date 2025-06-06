@@ -21,7 +21,7 @@ func (_m *Manager) EXPECT() *Manager_Expecter {
 }
 
 // BuildSession provides a mock function with given fields: handler, sessionID
-func (_m *Manager) BuildSession(handler session.Driver, sessionID ...string) session.Session {
+func (_m *Manager) BuildSession(handler session.Driver, sessionID ...string) (session.Session, error) {
 	_va := make([]interface{}, len(sessionID))
 	for _i := range sessionID {
 		_va[_i] = sessionID[_i]
@@ -36,6 +36,10 @@ func (_m *Manager) BuildSession(handler session.Driver, sessionID ...string) ses
 	}
 
 	var r0 session.Session
+	var r1 error
+	if rf, ok := ret.Get(0).(func(session.Driver, ...string) (session.Session, error)); ok {
+		return rf(handler, sessionID...)
+	}
 	if rf, ok := ret.Get(0).(func(session.Driver, ...string) session.Session); ok {
 		r0 = rf(handler, sessionID...)
 	} else {
@@ -44,7 +48,13 @@ func (_m *Manager) BuildSession(handler session.Driver, sessionID ...string) ses
 		}
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(session.Driver, ...string) error); ok {
+		r1 = rf(handler, sessionID...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // Manager_BuildSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BuildSession'
@@ -73,12 +83,12 @@ func (_c *Manager_BuildSession_Call) Run(run func(handler session.Driver, sessio
 	return _c
 }
 
-func (_c *Manager_BuildSession_Call) Return(_a0 session.Session) *Manager_BuildSession_Call {
-	_c.Call.Return(_a0)
+func (_c *Manager_BuildSession_Call) Return(_a0 session.Session, _a1 error) *Manager_BuildSession_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *Manager_BuildSession_Call) RunAndReturn(run func(session.Driver, ...string) session.Session) *Manager_BuildSession_Call {
+func (_c *Manager_BuildSession_Call) RunAndReturn(run func(session.Driver, ...string) (session.Session, error)) *Manager_BuildSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -154,52 +164,36 @@ func (_c *Manager_Driver_Call) RunAndReturn(run func(...string) (session.Driver,
 	return _c
 }
 
-// Extend provides a mock function with given fields: driver, handler
-func (_m *Manager) Extend(driver string, handler func() session.Driver) session.Manager {
-	ret := _m.Called(driver, handler)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Extend")
-	}
-
-	var r0 session.Manager
-	if rf, ok := ret.Get(0).(func(string, func() session.Driver) session.Manager); ok {
-		r0 = rf(driver, handler)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(session.Manager)
-		}
-	}
-
-	return r0
+// ReleaseSession provides a mock function with given fields: _a0
+func (_m *Manager) ReleaseSession(_a0 session.Session) {
+	_m.Called(_a0)
 }
 
-// Manager_Extend_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Extend'
-type Manager_Extend_Call struct {
+// Manager_ReleaseSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReleaseSession'
+type Manager_ReleaseSession_Call struct {
 	*mock.Call
 }
 
-// Extend is a helper method to define mock.On call
-//   - driver string
-//   - handler func() session.Driver
-func (_e *Manager_Expecter) Extend(driver interface{}, handler interface{}) *Manager_Extend_Call {
-	return &Manager_Extend_Call{Call: _e.mock.On("Extend", driver, handler)}
+// ReleaseSession is a helper method to define mock.On call
+//   - _a0 session.Session
+func (_e *Manager_Expecter) ReleaseSession(_a0 interface{}) *Manager_ReleaseSession_Call {
+	return &Manager_ReleaseSession_Call{Call: _e.mock.On("ReleaseSession", _a0)}
 }
 
-func (_c *Manager_Extend_Call) Run(run func(driver string, handler func() session.Driver)) *Manager_Extend_Call {
+func (_c *Manager_ReleaseSession_Call) Run(run func(_a0 session.Session)) *Manager_ReleaseSession_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(func() session.Driver))
+		run(args[0].(session.Session))
 	})
 	return _c
 }
 
-func (_c *Manager_Extend_Call) Return(_a0 session.Manager) *Manager_Extend_Call {
-	_c.Call.Return(_a0)
+func (_c *Manager_ReleaseSession_Call) Return() *Manager_ReleaseSession_Call {
+	_c.Call.Return()
 	return _c
 }
 
-func (_c *Manager_Extend_Call) RunAndReturn(run func(string, func() session.Driver) session.Manager) *Manager_Extend_Call {
-	_c.Call.Return(run)
+func (_c *Manager_ReleaseSession_Call) RunAndReturn(run func(session.Session)) *Manager_ReleaseSession_Call {
+	_c.Run(run)
 	return _c
 }
 

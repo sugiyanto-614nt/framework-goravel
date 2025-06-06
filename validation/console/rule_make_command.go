@@ -1,12 +1,15 @@
 package console
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
-	"github.com/goravel/framework/support/color"
+	"github.com/goravel/framework/errors"
+	"github.com/goravel/framework/packages/match"
+	"github.com/goravel/framework/packages/modify"
 	supportconsole "github.com/goravel/framework/support/console"
 	"github.com/goravel/framework/support/file"
 	"github.com/goravel/framework/support/str"
@@ -16,17 +19,17 @@ type RuleMakeCommand struct {
 }
 
 // Signature The name and signature of the console command.
-func (receiver *RuleMakeCommand) Signature() string {
+func (r *RuleMakeCommand) Signature() string {
 	return "make:rule"
 }
 
 // Description The console command description.
-func (receiver *RuleMakeCommand) Description() string {
+func (r *RuleMakeCommand) Description() string {
 	return "Create a new rule class"
 }
 
 // Extend The console command extend.
-func (receiver *RuleMakeCommand) Extend() command.Extend {
+func (r *RuleMakeCommand) Extend() command.Extend {
 	return command.Extend{
 		Category: "make",
 		Flags: []command.Flag{
@@ -40,30 +43,41 @@ func (receiver *RuleMakeCommand) Extend() command.Extend {
 }
 
 // Handle Execute the console command.
-func (receiver *RuleMakeCommand) Handle(ctx console.Context) error {
+func (r *RuleMakeCommand) Handle(ctx console.Context) error {
 	m, err := supportconsole.NewMake(ctx, "rule", ctx.Argument(0), filepath.Join("app", "rules"))
 	if err != nil {
-		color.Red().Println(err)
+		ctx.Error(err.Error())
 		return nil
 	}
 
-	if err := file.Create(m.GetFilePath(), receiver.populateStub(receiver.getStub(), m.GetPackageName(), m.GetStructName())); err != nil {
-		return err
+	if err := file.PutContent(m.GetFilePath(), r.populateStub(r.getStub(), m.GetPackageName(), m.GetStructName(), m.GetSignature())); err != nil {
+		ctx.Error(err.Error())
+		return nil
 	}
 
-	color.Green().Println("Rule created successfully")
+	ctx.Success("Rule created successfully")
+
+	if err = modify.GoFile(filepath.Join("app", "providers", "validation_service_provider.go")).
+		Find(match.Imports()).Modify(modify.AddImport(m.GetPackageImportPath())).
+		Find(match.ValidationRules()).Modify(modify.Register(fmt.Sprintf("&%s.%s{}", m.GetPackageName(), m.GetStructName()))).
+		Apply(); err != nil {
+		ctx.Warning(errors.ValidationRuleRegisterFailed.Args(err).Error())
+		return nil
+	}
+
+	ctx.Success("Rule registered successfully")
 
 	return nil
 }
 
-func (receiver *RuleMakeCommand) getStub() string {
+func (r *RuleMakeCommand) getStub() string {
 	return Stubs{}.Rule()
 }
 
 // populateStub Populate the place-holders in the command stub.
-func (receiver *RuleMakeCommand) populateStub(stub string, packageName, structName string) string {
+func (r *RuleMakeCommand) populateStub(stub string, packageName, structName, signature string) string {
 	stub = strings.ReplaceAll(stub, "DummyRule", structName)
-	stub = strings.ReplaceAll(stub, "DummyName", str.Of(structName).Snake().String())
+	stub = strings.ReplaceAll(stub, "DummySignature", str.Of(signature).Snake().String())
 	stub = strings.ReplaceAll(stub, "DummyPackage", packageName)
 
 	return stub

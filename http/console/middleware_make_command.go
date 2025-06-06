@@ -6,7 +6,6 @@ import (
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
-	"github.com/goravel/framework/support/color"
 	supportconsole "github.com/goravel/framework/support/console"
 	"github.com/goravel/framework/support/file"
 )
@@ -15,17 +14,17 @@ type MiddlewareMakeCommand struct {
 }
 
 // Signature The name and signature of the console command.
-func (receiver *MiddlewareMakeCommand) Signature() string {
+func (r *MiddlewareMakeCommand) Signature() string {
 	return "make:middleware"
 }
 
 // Description The console command description.
-func (receiver *MiddlewareMakeCommand) Description() string {
+func (r *MiddlewareMakeCommand) Description() string {
 	return "Create a new middleware class"
 }
 
 // Extend The console command extend.
-func (receiver *MiddlewareMakeCommand) Extend() command.Extend {
+func (r *MiddlewareMakeCommand) Extend() command.Extend {
 	return command.Extend{
 		Category: "make",
 		Flags: []command.Flag{
@@ -39,28 +38,29 @@ func (receiver *MiddlewareMakeCommand) Extend() command.Extend {
 }
 
 // Handle Execute the console command.
-func (receiver *MiddlewareMakeCommand) Handle(ctx console.Context) error {
+func (r *MiddlewareMakeCommand) Handle(ctx console.Context) error {
 	m, err := supportconsole.NewMake(ctx, "middleware", ctx.Argument(0), filepath.Join("app", "http", "middleware"))
 	if err != nil {
-		color.Red().Println(err)
+		ctx.Error(err.Error())
 		return nil
 	}
 
-	if err := file.Create(m.GetFilePath(), receiver.populateStub(receiver.getStub(), m.GetPackageName(), m.GetStructName())); err != nil {
-		return err
+	if err := file.PutContent(m.GetFilePath(), r.populateStub(r.getStub(), m.GetPackageName(), m.GetStructName())); err != nil {
+		ctx.Error(err.Error())
+		return nil
 	}
 
-	color.Green().Println("Middleware created successfully")
+	ctx.Success("Middleware created successfully")
 
 	return nil
 }
 
-func (receiver *MiddlewareMakeCommand) getStub() string {
+func (r *MiddlewareMakeCommand) getStub() string {
 	return Stubs{}.Middleware()
 }
 
 // populateStub Populate the place-holders in the command stub.
-func (receiver *MiddlewareMakeCommand) populateStub(stub string, packageName, structName string) string {
+func (r *MiddlewareMakeCommand) populateStub(stub string, packageName, structName string) string {
 	stub = strings.ReplaceAll(stub, "DummyMiddleware", structName)
 	stub = strings.ReplaceAll(stub, "DummyPackage", packageName)
 

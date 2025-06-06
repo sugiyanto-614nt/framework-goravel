@@ -1,19 +1,29 @@
 package queue
 
 type Queue interface {
-	Worker(args ...Args) Worker
+	// Connection gets a driver instance by connection name
+	Connection(name string) (Driver, error)
+	// Chain creates a chain of jobs to be processed one by one, passing
+	Chain(jobs []ChainJob) PendingJob
+	// Failer gets failed jobs
+	Failer() Failer
+	// GetJob gets job by signature
+	GetJob(signature string) (Job, error)
+	// GetJobs gets all jobs
+	GetJobs() []Job
+	// GetJobStorer gets job storer
+	JobStorer() JobStorer
+	// Job add a job to queue
+	Job(job Job, args ...[]Arg) PendingJob
 	// Register register jobs
 	Register(jobs []Job)
-	// GetJobs get all jobs
-	GetJobs() []Job
-	// Job add a job to queue
-	Job(job Job, args []Arg) Task
-	// Chain creates a chain of jobs to be processed one by one, passing
-	Chain(jobs []Jobs) Task
+	// Worker create a queue worker
+	Worker(payloads ...Args) Worker
 }
 
 type Worker interface {
 	Run() error
+	Shutdown() error
 }
 
 type Args struct {
@@ -26,6 +36,6 @@ type Args struct {
 }
 
 type Arg struct {
-	Type  string
-	Value any
+	Type  string `json:"type"`
+	Value any    `json:"value"`
 }

@@ -1,13 +1,15 @@
 package file
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
+
+	"github.com/goravel/framework/errors"
+	"github.com/goravel/framework/support/convert"
 )
 
 func ClientOriginalExtension(file string) string {
@@ -16,16 +18,19 @@ func ClientOriginalExtension(file string) string {
 
 func Contain(file string, search string) bool {
 	if Exists(file) {
-		data, err := os.ReadFile(file)
+		data, err := GetContent(file)
 		if err != nil {
 			return false
 		}
-		return strings.Contains(string(data), search)
+
+		return strings.Contains(data, search)
 	}
 
 	return false
 }
 
+// Create a file with the given content
+// Deprecated: Use PutContent instead
 func Create(file string, content string) error {
 	if err := os.MkdirAll(filepath.Dir(file), os.ModePerm); err != nil {
 		return err
@@ -63,10 +68,20 @@ func Extension(file string, originalWhenUnknown ...bool) (string, error) {
 			}
 		}
 
-		return "", errors.New("unknown file extension")
+		return "", errors.UnknownFileExtension
 	}
 
 	return strings.TrimPrefix(mtype.Extension(), "."), nil
+}
+
+func GetContent(file string) (string, error) {
+	// Read the entire file
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", err
+	}
+
+	return convert.UnsafeString(data), nil
 }
 
 func LastModified(file, timezone string) (time.Time, error) {
@@ -90,6 +105,46 @@ func MimeType(file string) (string, error) {
 	}
 
 	return mtype.String(), nil
+}
+
+func PutContent(file string, content string, options ...Option) error {
+	// Default options
+	opts := &option{
+		mode:   os.ModePerm,
+		append: false,
+	}
+
+	// Apply options
+	for _, option := range options {
+		option(opts)
+	}
+
+	// Create the directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(file), opts.mode); err != nil {
+		return err
+	}
+
+	// Open file with appropriate flags
+	flag := os.O_CREATE | os.O_WRONLY
+	if opts.append {
+		flag |= os.O_APPEND
+	} else {
+		flag |= os.O_TRUNC
+	}
+
+	// Open the file
+	f, err := os.OpenFile(file, flag, opts.mode)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Write the content
+	if _, err = f.WriteString(content); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func Remove(file string) error {

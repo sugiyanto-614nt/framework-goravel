@@ -22,19 +22,18 @@ func NewBuildCommand(config config.Config) *BuildCommand {
 }
 
 // Signature The name and signature of the console command.
-func (receiver *BuildCommand) Signature() string {
+func (r *BuildCommand) Signature() string {
 	return "build"
 }
 
 // Description The console command description.
-func (receiver *BuildCommand) Description() string {
+func (r *BuildCommand) Description() string {
 	return "Build the application"
 }
 
 // Extend The console command extend.
-func (receiver *BuildCommand) Extend() command.Extend {
+func (r *BuildCommand) Extend() command.Extend {
 	return command.Extend{
-		Category: "build",
 		Flags: []command.Flag{
 			&command.StringFlag{
 				Name:    "os",
@@ -59,20 +58,14 @@ func (receiver *BuildCommand) Extend() command.Extend {
 }
 
 // Handle Execute the console command.
-func (receiver *BuildCommand) Handle(ctx console.Context) error {
+func (r *BuildCommand) Handle(ctx console.Context) error {
 	var err error
-	if receiver.config.GetString("app.env") == "production" {
+	if r.config.GetString("app.env") == "production" {
 		ctx.Warning("**************************************")
 		ctx.Warning("*     Application In Production!     *")
 		ctx.Warning("**************************************")
 
-		answer, err := ctx.Confirm("Do you really wish to run this command?")
-		if err != nil {
-			ctx.Error(fmt.Sprintf("Confirm error: %v", err))
-			return nil
-		}
-
-		if !answer {
+		if !ctx.Confirm("Do you really wish to run this command?") {
 			ctx.Warning("Command cancelled!")
 			return nil
 		}
@@ -99,7 +92,7 @@ func (receiver *BuildCommand) Handle(ctx console.Context) error {
 
 	if err := ctx.Spinner("Building...", console.SpinnerOption{
 		Action: func() error {
-			return receiver.build(os, generateCommand(ctx.Option("name"), ctx.OptionBool("static")))
+			return r.build(os, generateCommand(ctx.Option("name"), ctx.OptionBool("static")))
 		},
 	}); err != nil {
 		ctx.Error(fmt.Sprintf("Build error: %v", err))
@@ -110,7 +103,7 @@ func (receiver *BuildCommand) Handle(ctx console.Context) error {
 	return nil
 }
 
-func (receiver *BuildCommand) build(system string, command []string) error {
+func (r *BuildCommand) build(system string, command []string) error {
 	os.Setenv("CGO_ENABLED", "0")
 	os.Setenv("GOOS", system)
 	os.Setenv("GOARCH", "amd64")

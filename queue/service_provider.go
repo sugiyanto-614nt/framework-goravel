@@ -1,28 +1,43 @@
 package queue
 
 import (
+	"github.com/goravel/framework/contracts"
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/foundation"
-	queueConsole "github.com/goravel/framework/queue/console"
+	"github.com/goravel/framework/errors"
+	queueconsole "github.com/goravel/framework/queue/console"
 )
-
-const Binding = "goravel.queue"
 
 type ServiceProvider struct {
 }
 
-func (receiver *ServiceProvider) Register(app foundation.Application) {
-	app.Singleton(Binding, func(app foundation.Application) (any, error) {
-		return NewApplication(app.MakeConfig(), app.MakeLog()), nil
+func (r *ServiceProvider) Register(app foundation.Application) {
+	app.Singleton(contracts.BindingQueue, func(app foundation.Application) (any, error) {
+		config := app.MakeConfig()
+		if config == nil {
+			return nil, errors.ConfigFacadeNotSet.SetModule(errors.ModuleQueue)
+		}
+
+		log := app.MakeLog()
+		if log == nil {
+			return nil, errors.LogFacadeNotSet.SetModule(errors.ModuleQueue)
+		}
+
+		queueConfig := NewConfig(config)
+		job := NewJobStorer()
+		db := app.MakeDB()
+
+		return NewApplication(queueConfig, db, job, app.GetJson(), log), nil
 	})
 }
 
-func (receiver *ServiceProvider) Boot(app foundation.Application) {
-	receiver.registerCommands(app)
+func (r *ServiceProvider) Boot(app foundation.Application) {
+	r.registerCommands(app)
 }
 
-func (receiver *ServiceProvider) registerCommands(app foundation.Application) {
+func (r *ServiceProvider) registerCommands(app foundation.Application) {
 	app.MakeArtisan().Register([]console.Command{
-		&queueConsole.JobMakeCommand{},
+		&queueconsole.JobMakeCommand{},
+		queueconsole.NewQueueRetryCommand(app.MakeConfig(), app.MakeDB(), app.MakeQueue(), app.GetJson()),
 	})
 }

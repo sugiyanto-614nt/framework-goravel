@@ -1,20 +1,19 @@
 package event
 
 import (
-	"fmt"
-
 	"github.com/goravel/framework/contracts/event"
-	queuecontract "github.com/goravel/framework/contracts/queue"
+	contractsqueue "github.com/goravel/framework/contracts/queue"
+	"github.com/goravel/framework/errors"
 )
 
 type Task struct {
 	args      []event.Arg
 	event     event.Event
 	listeners []event.Listener
-	queue     queuecontract.Queue
+	queue     contractsqueue.Queue
 }
 
-func NewTask(queue queuecontract.Queue, args []event.Arg, event event.Event, listeners []event.Listener) *Task {
+func NewTask(queue contractsqueue.Queue, args []event.Arg, event event.Event, listeners []event.Listener) *Task {
 	return &Task{
 		args:      args,
 		event:     event,
@@ -25,7 +24,7 @@ func NewTask(queue queuecontract.Queue, args []event.Arg, event event.Event, lis
 
 func (receiver *Task) Dispatch() error {
 	if len(receiver.listeners) == 0 {
-		return fmt.Errorf("event %v doesn't bind listeners", receiver.event)
+		return errors.EventListenerNotBind.Args(receiver.event)
 	}
 
 	handledArgs, err := receiver.event.Handle(receiver.args)
@@ -62,10 +61,10 @@ func (receiver *Task) Dispatch() error {
 	return nil
 }
 
-func eventArgsToQueueArgs(args []event.Arg) []queuecontract.Arg {
-	var queueArgs []queuecontract.Arg
+func eventArgsToQueueArgs(args []event.Arg) []contractsqueue.Arg {
+	var queueArgs []contractsqueue.Arg
 	for _, arg := range args {
-		queueArgs = append(queueArgs, queuecontract.Arg{
+		queueArgs = append(queueArgs, contractsqueue.Arg{
 			Type:  arg.Type,
 			Value: arg.Value,
 		})

@@ -1,13 +1,12 @@
 package console
 
 import (
-	"errors"
 	"path/filepath"
 	"strings"
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
-	"github.com/goravel/framework/support/color"
+	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support/file"
 )
 
@@ -18,17 +17,17 @@ func NewPackageMakeCommand() *PackageMakeCommand {
 }
 
 // Signature The name and signature of the console command.
-func (receiver *PackageMakeCommand) Signature() string {
+func (r *PackageMakeCommand) Signature() string {
 	return "make:package"
 }
 
 // Description The console command description.
-func (receiver *PackageMakeCommand) Description() string {
+func (r *PackageMakeCommand) Description() string {
 	return "Create a package template"
 }
 
 // Extend The console command extend.
-func (receiver *PackageMakeCommand) Extend() command.Extend {
+func (r *PackageMakeCommand) Extend() command.Extend {
 	return command.Extend{
 		Category: "make",
 		Flags: []command.Flag{
@@ -43,21 +42,22 @@ func (receiver *PackageMakeCommand) Extend() command.Extend {
 }
 
 // Handle Execute the console command.
-func (receiver *PackageMakeCommand) Handle(ctx console.Context) error {
+func (r *PackageMakeCommand) Handle(ctx console.Context) error {
 	pkg := ctx.Argument(0)
 	if pkg == "" {
 		var err error
 		pkg, err = ctx.Ask("Enter the package name", console.AskOption{
 			Validate: func(s string) error {
 				if s == "" {
-					return errors.New("the package name cannot be empty")
+					return errors.CommandEmptyPackageName
 				}
 
 				return nil
 			},
 		})
 		if err != nil {
-			return err
+			ctx.Error(err.Error())
+			return nil
 		}
 	}
 
@@ -65,28 +65,30 @@ func (receiver *PackageMakeCommand) Handle(ctx console.Context) error {
 	root := ctx.Option("root") + "/" + pkg
 
 	if file.Exists(root) {
-		color.Red().Printf("Package %s already exists\n", pkg)
+		ctx.Error("Package " + pkg + " already exists")
 		return nil
 	}
 
 	packageName := packageName(pkg)
 	packageMakeCommandStubs := NewPackageMakeCommandStubs(pkg, root)
 	files := map[string]func() string{
-		"README.md":                        packageMakeCommandStubs.Readme,
-		"service_provider.go":              packageMakeCommandStubs.ServiceProvider,
-		packageName + ".go":                packageMakeCommandStubs.Main,
-		"config/" + packageName + ".go":    packageMakeCommandStubs.Config,
-		"contracts/" + packageName + ".go": packageMakeCommandStubs.Contracts,
-		"facades/" + packageName + ".go":   packageMakeCommandStubs.Facades,
+		"README.md":           packageMakeCommandStubs.Readme,
+		"service_provider.go": packageMakeCommandStubs.ServiceProvider,
+		packageName + ".go":   packageMakeCommandStubs.Main,
+		filepath.Join("config", packageName+".go"):    packageMakeCommandStubs.Config,
+		filepath.Join("contracts", packageName+".go"): packageMakeCommandStubs.Contracts,
+		filepath.Join("facades", packageName+".go"):   packageMakeCommandStubs.Facades,
+		filepath.Join("setup", "setup.go"):            packageMakeCommandStubs.Setup,
 	}
 
 	for path, content := range files {
-		if err := file.Create(filepath.Join(root, path), content()); err != nil {
-			return err
+		if err := file.PutContent(filepath.Join(root, path), content()); err != nil {
+			ctx.Error(err.Error())
+			return nil
 		}
 	}
 
-	color.Green().Printf("Package created successfully: %s\n", root)
+	ctx.Success("Package created successfully: " + root)
 
 	return nil
 }

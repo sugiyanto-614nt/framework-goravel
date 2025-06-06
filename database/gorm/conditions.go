@@ -1,12 +1,12 @@
 package gorm
 
 import (
-	ormcontract "github.com/goravel/framework/contracts/database/orm"
+	contractsorm "github.com/goravel/framework/contracts/database/orm"
 )
 
 type Conditions struct {
 	distinct      []any
-	group         string
+	groupBy       []string
 	having        *Having
 	join          []Join
 	limit         *int
@@ -15,7 +15,7 @@ type Conditions struct {
 	offset        *int
 	omit          []string
 	order         []any
-	scopes        []func(ormcontract.Query) ormcontract.Query
+	scopes        []func(contractsorm.Query) contractsorm.Query
 	selectColumns *Select
 	sharedLock    bool
 	table         *Table

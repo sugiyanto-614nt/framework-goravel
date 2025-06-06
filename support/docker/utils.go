@@ -1,20 +1,16 @@
 package docker
 
 import (
-	"bytes"
 	"fmt"
-	"math/rand"
-	"net"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cast"
 
-	"github.com/goravel/framework/contracts/testing"
+	"github.com/goravel/framework/contracts/testing/docker"
+	"github.com/goravel/framework/support/process"
 )
 
-func getExposedPort(exposedPorts []string, port int) int {
+func ExposedPort(exposedPorts []string, port int) int {
 	for _, exposedPort := range exposedPorts {
 		if !strings.Contains(exposedPort, cast.ToString(port)) {
 			continue
@@ -28,22 +24,7 @@ func getExposedPort(exposedPorts []string, port int) int {
 	return 0
 }
 
-func getValidPort() int {
-	for i := 0; i < 60; i++ {
-		random := rand.Intn(10000) + 10000
-		l, err := net.Listen("tcp", fmt.Sprintf(":%s", strconv.Itoa(random)))
-		if err != nil {
-			continue
-		}
-		defer l.Close()
-
-		return random
-	}
-
-	return 0
-}
-
-func imageToCommand(image *testing.Image) (command string, exposedPorts []string) {
+func ImageToCommand(image *docker.Image) (command string, exposedPorts []string) {
 	if image == nil {
 		return "", nil
 	}
@@ -58,7 +39,7 @@ func imageToCommand(image *testing.Image) (command string, exposedPorts []string
 	if len(image.ExposedPorts) > 0 {
 		for _, port := range image.ExposedPorts {
 			if !strings.Contains(port, ":") {
-				port = fmt.Sprintf("%d:%s", getValidPort(), port)
+				port = fmt.Sprintf("%d:%s", process.ValidPort(), port)
 			}
 			ports = append(ports, port)
 			commands = append(commands, "-p", port)
@@ -67,21 +48,9 @@ func imageToCommand(image *testing.Image) (command string, exposedPorts []string
 
 	commands = append(commands, fmt.Sprintf("%s:%s", image.Repository, image.Tag))
 
-	return strings.Join(commands, " "), ports
-}
-
-func run(command string) (string, error) {
-	cmd := exec.Command("/bin/sh", "-c", command)
-
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%s: %s", err, stderr.String())
+	if len(image.Args) > 0 {
+		commands = append(commands, image.Args...)
 	}
 
-	return out.String(), nil
+	return strings.Join(commands, " "), ports
 }

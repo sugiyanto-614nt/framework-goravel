@@ -3,9 +3,10 @@ package validation
 import (
 	"net/url"
 	"reflect"
+	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/gookit/validate"
-	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cast"
 
 	httpvalidate "github.com/goravel/framework/contracts/validation"
@@ -42,6 +43,10 @@ func (v *Validator) Bind(ptr any) error {
 	// we want user can the original data that is not defined in the rules,
 	// so that user doesn't need to define rules for all fields.
 	data := v.instance.SafeData()
+	prtType := reflect.TypeOf(ptr)
+	if prtType.Kind() == reflect.Ptr {
+		prtType = prtType.Elem()
+	}
 
 	if formData, ok := v.data.(*validate.FormData); ok {
 		if values, ok := v.data.Src().(url.Values); ok {
@@ -53,7 +58,16 @@ func (v *Validator) Bind(ptr any) error {
 
 			for key, value := range formData.Files {
 				if _, exist := data[key]; !exist {
-					data[key] = value
+					for i := 0; i < prtType.NumField(); i++ {
+						field := prtType.Field(i)
+						if field.Tag.Get("form") == key {
+							if field.Type.Kind() == reflect.Slice {
+								data[key] = value
+							} else {
+								data[key] = value[0]
+							}
+						}
+					}
 				}
 			}
 		}
@@ -146,70 +160,61 @@ func (v *Validator) castValue() mapstructure.DecodeHookFunc {
 			default:
 				castedValue, err = cast.ToSliceE(from.Interface())
 			}
-		case reflect.Map:
-			switch to.Type().Key().Kind() {
-			case reflect.String:
-				castedValue, err = cast.ToStringMapStringE(from.Interface())
-			case reflect.Bool:
-				castedValue, err = cast.ToStringMapBoolE(from.Interface())
-			case reflect.Int:
-				castedValue, err = cast.ToStringMapIntE(from.Interface())
-			case reflect.Int64:
-				castedValue, err = cast.ToStringMapInt64E(from.Interface())
-			default:
-				castedValue, err = cast.ToStringMapE(from.Interface())
-			}
 		case reflect.Struct:
 			switch to.Type() {
 			case reflect.TypeOf(carbon.Carbon{}):
 				castedValue = castCarbon(from, nil)
 			case reflect.TypeOf(carbon.DateTime{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewDateTime(c)
 				})
 			case reflect.TypeOf(carbon.DateTimeMilli{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewDateTimeMilli(c)
 				})
 			case reflect.TypeOf(carbon.DateTimeMicro{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewDateTimeMicro(c)
 				})
 			case reflect.TypeOf(carbon.DateTimeNano{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewDateTimeNano(c)
 				})
 			case reflect.TypeOf(carbon.Date{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewDate(c)
 				})
 			case reflect.TypeOf(carbon.DateMilli{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewDateMilli(c)
 				})
 			case reflect.TypeOf(carbon.DateMicro{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewDateMicro(c)
 				})
 			case reflect.TypeOf(carbon.DateNano{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewDateNano(c)
 				})
 			case reflect.TypeOf(carbon.Timestamp{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewTimestamp(c)
 				})
 			case reflect.TypeOf(carbon.TimestampMilli{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewTimestampMilli(c)
 				})
 			case reflect.TypeOf(carbon.TimestampMicro{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewTimestampMicro(c)
 				})
 			case reflect.TypeOf(carbon.TimestampNano{}):
-				castedValue = castCarbon(from, func(c carbon.Carbon) any {
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
 					return carbon.NewTimestampNano(c)
+				})
+			case reflect.TypeOf(time.Time{}):
+				castedValue = castCarbon(from, func(c *carbon.Carbon) any {
+					return c.StdTime()
 				})
 			}
 		default:
@@ -225,8 +230,8 @@ func (v *Validator) castValue() mapstructure.DecodeHookFunc {
 	}
 }
 
-func castCarbon(from reflect.Value, transfrom func(carbon carbon.Carbon) any) any {
-	var c carbon.Carbon
+func castCarbon(from reflect.Value, transfrom func(carbon *carbon.Carbon) any) any {
+	var c *carbon.Carbon
 
 	switch len(cast.ToString(from.Interface())) {
 	case 10:

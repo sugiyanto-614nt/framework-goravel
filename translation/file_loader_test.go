@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/goravel/framework/contracts/foundation"
+	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/foundation/json"
 	"github.com/goravel/framework/support/env"
 	"github.com/goravel/framework/support/file"
@@ -19,21 +20,26 @@ type FileLoaderTestSuite struct {
 }
 
 func TestFileLoaderTestSuite(t *testing.T) {
-	assert.Nil(t, file.Create("lang/en/test.json", `{"foo": "bar", "baz": {"foo": "bar"}}`))
-	assert.Nil(t, file.Create("lang/en/another/test.json", `{"foo": "backagebar", "baz": "backagesplash"}`))
-	assert.Nil(t, file.Create("lang/another/en/test.json", `{"foo": "backagebar", "baz": "backagesplash"}`))
-	assert.Nil(t, file.Create("lang/en/invalid/test.json", `{"foo": "bar",}`))
-	assert.Nil(t, file.Create("lang/cn.json", `{"foo": "bar", "baz": {"foo": "bar"}}`))
-	restrictedFilePath := "lang/en/restricted/test.json"
-	assert.Nil(t, file.Create(restrictedFilePath, `{"foo": "restricted"}`))
-	assert.Nil(t, os.Chmod(restrictedFilePath, 0000))
-
 	suite.Run(t, &FileLoaderTestSuite{})
-	assert.Nil(t, file.Remove("lang"))
+}
+
+func (f *FileLoaderTestSuite) SetupSuite() {
+	assert.Nil(f.T(), file.PutContent("lang/en/test.json", `{"foo": "bar", "baz": {"foo": "bar"}}`))
+	assert.Nil(f.T(), file.PutContent("lang/en/another/test.json", `{"foo": "backagebar", "baz": "backagesplash"}`))
+	assert.Nil(f.T(), file.PutContent("lang/another/en/test.json", `{"foo": "backagebar", "baz": "backagesplash"}`))
+	assert.Nil(f.T(), file.PutContent("lang/en/invalid/test.json", `{"foo": "bar",}`))
+	assert.Nil(f.T(), file.PutContent("lang/cn.json", `{"foo": "bar", "baz": {"foo": "bar"}}`))
+	restrictedFilePath := "lang/en/restricted/test.json"
+	assert.Nil(f.T(), file.PutContent(restrictedFilePath, `{"foo": "restricted"}`))
+	assert.Nil(f.T(), os.Chmod(restrictedFilePath, 0000))
+}
+
+func (f *FileLoaderTestSuite) TearDownSuite() {
+	f.Nil(file.Remove("lang"))
 }
 
 func (f *FileLoaderTestSuite) SetupTest() {
-	f.json = json.NewJson()
+	f.json = json.New()
 }
 
 func (f *FileLoaderTestSuite) TestLoad() {
@@ -85,7 +91,7 @@ func (f *FileLoaderTestSuite) TestLoadNonExistentFile() {
 
 	f.Error(err)
 	f.Nil(translations)
-	f.Equal(ErrFileNotExist, err)
+	f.EqualError(err, errors.LangFileNotExist.Error())
 }
 
 func (f *FileLoaderTestSuite) TestLoadInvalidJSON() {
@@ -95,4 +101,23 @@ func (f *FileLoaderTestSuite) TestLoadInvalidJSON() {
 
 	f.Error(err)
 	f.Nil(translations)
+}
+
+func Benchmark_Load(b *testing.B) {
+	s := new(FileLoaderTestSuite)
+	s.SetT(&testing.T{})
+	s.SetupSuite()
+	s.SetupTest()
+	b.StartTimer()
+	b.ResetTimer()
+
+	paths := []string{"./lang"}
+	loader := NewFileLoader(paths, s.json)
+	for i := 0; i < b.N; i++ {
+		_, err := loader.Load("en", "test")
+		s.NoError(err)
+	}
+
+	b.StopTimer()
+	s.TearDownSuite()
 }

@@ -28,6 +28,52 @@ func (_m *ContextRequest) EXPECT() *ContextRequest_Expecter {
 	return &ContextRequest_Expecter{mock: &_m.Mock}
 }
 
+// Abort provides a mock function with given fields: code
+func (_m *ContextRequest) Abort(code ...int) {
+	_va := make([]interface{}, len(code))
+	for _i := range code {
+		_va[_i] = code[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _va...)
+	_m.Called(_ca...)
+}
+
+// ContextRequest_Abort_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Abort'
+type ContextRequest_Abort_Call struct {
+	*mock.Call
+}
+
+// Abort is a helper method to define mock.On call
+//   - code ...int
+func (_e *ContextRequest_Expecter) Abort(code ...interface{}) *ContextRequest_Abort_Call {
+	return &ContextRequest_Abort_Call{Call: _e.mock.On("Abort",
+		append([]interface{}{}, code...)...)}
+}
+
+func (_c *ContextRequest_Abort_Call) Run(run func(code ...int)) *ContextRequest_Abort_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]int, len(args)-0)
+		for i, a := range args[0:] {
+			if a != nil {
+				variadicArgs[i] = a.(int)
+			}
+		}
+		run(variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *ContextRequest_Abort_Call) Return() *ContextRequest_Abort_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ContextRequest_Abort_Call) RunAndReturn(run func(...int)) *ContextRequest_Abort_Call {
+	_c.Run(run)
+	return _c
+}
+
 // AbortWithStatus provides a mock function with given fields: code
 func (_m *ContextRequest) AbortWithStatus(code int) {
 	_m.Called(code)
@@ -57,7 +103,7 @@ func (_c *ContextRequest_AbortWithStatus_Call) Return() *ContextRequest_AbortWit
 }
 
 func (_c *ContextRequest_AbortWithStatus_Call) RunAndReturn(run func(int)) *ContextRequest_AbortWithStatus_Call {
-	_c.Call.Return(run)
+	_c.Run(run)
 	return _c
 }
 
@@ -91,11 +137,11 @@ func (_c *ContextRequest_AbortWithStatusJson_Call) Return() *ContextRequest_Abor
 }
 
 func (_c *ContextRequest_AbortWithStatusJson_Call) RunAndReturn(run func(int, interface{})) *ContextRequest_AbortWithStatusJson_Call {
-	_c.Call.Return(run)
+	_c.Run(run)
 	return _c
 }
 
-// All provides a mock function with given fields:
+// All provides a mock function with no fields
 func (_m *ContextRequest) All() map[string]interface{} {
 	ret := _m.Called()
 
@@ -353,7 +399,65 @@ func (_c *ContextRequest_File_Call) RunAndReturn(run func(string) (filesystem.Fi
 	return _c
 }
 
-// FullUrl provides a mock function with given fields:
+// Files provides a mock function with given fields: name
+func (_m *ContextRequest) Files(name string) ([]filesystem.File, error) {
+	ret := _m.Called(name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Files")
+	}
+
+	var r0 []filesystem.File
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string) ([]filesystem.File, error)); ok {
+		return rf(name)
+	}
+	if rf, ok := ret.Get(0).(func(string) []filesystem.File); ok {
+		r0 = rf(name)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]filesystem.File)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(string) error); ok {
+		r1 = rf(name)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ContextRequest_Files_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Files'
+type ContextRequest_Files_Call struct {
+	*mock.Call
+}
+
+// Files is a helper method to define mock.On call
+//   - name string
+func (_e *ContextRequest_Expecter) Files(name interface{}) *ContextRequest_Files_Call {
+	return &ContextRequest_Files_Call{Call: _e.mock.On("Files", name)}
+}
+
+func (_c *ContextRequest_Files_Call) Run(run func(name string)) *ContextRequest_Files_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string))
+	})
+	return _c
+}
+
+func (_c *ContextRequest_Files_Call) Return(_a0 []filesystem.File, _a1 error) *ContextRequest_Files_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ContextRequest_Files_Call) RunAndReturn(run func(string) ([]filesystem.File, error)) *ContextRequest_Files_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FullUrl provides a mock function with no fields
 func (_m *ContextRequest) FullUrl() string {
 	ret := _m.Called()
 
@@ -398,7 +502,7 @@ func (_c *ContextRequest_FullUrl_Call) RunAndReturn(run func() string) *ContextR
 	return _c
 }
 
-// HasSession provides a mock function with given fields:
+// HasSession provides a mock function with no fields
 func (_m *ContextRequest) HasSession() bool {
 	ret := _m.Called()
 
@@ -504,7 +608,7 @@ func (_c *ContextRequest_Header_Call) RunAndReturn(run func(string, ...string) s
 	return _c
 }
 
-// Headers provides a mock function with given fields:
+// Headers provides a mock function with no fields
 func (_m *ContextRequest) Headers() nethttp.Header {
 	ret := _m.Called()
 
@@ -551,7 +655,7 @@ func (_c *ContextRequest_Headers_Call) RunAndReturn(run func() nethttp.Header) *
 	return _c
 }
 
-// Host provides a mock function with given fields:
+// Host provides a mock function with no fields
 func (_m *ContextRequest) Host() string {
 	ret := _m.Called()
 
@@ -904,7 +1008,7 @@ func (_c *ContextRequest_InputInt64_Call) RunAndReturn(run func(string, ...int64
 }
 
 // InputMap provides a mock function with given fields: key, defaultValue
-func (_m *ContextRequest) InputMap(key string, defaultValue ...map[string]string) map[string]string {
+func (_m *ContextRequest) InputMap(key string, defaultValue ...map[string]interface{}) map[string]interface{} {
 	_va := make([]interface{}, len(defaultValue))
 	for _i := range defaultValue {
 		_va[_i] = defaultValue[_i]
@@ -918,12 +1022,12 @@ func (_m *ContextRequest) InputMap(key string, defaultValue ...map[string]string
 		panic("no return value specified for InputMap")
 	}
 
-	var r0 map[string]string
-	if rf, ok := ret.Get(0).(func(string, ...map[string]string) map[string]string); ok {
+	var r0 map[string]interface{}
+	if rf, ok := ret.Get(0).(func(string, ...map[string]interface{}) map[string]interface{}); ok {
 		r0 = rf(key, defaultValue...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(map[string]string)
+			r0 = ret.Get(0).(map[string]interface{})
 		}
 	}
 
@@ -937,18 +1041,18 @@ type ContextRequest_InputMap_Call struct {
 
 // InputMap is a helper method to define mock.On call
 //   - key string
-//   - defaultValue ...map[string]string
+//   - defaultValue ...map[string]interface{}
 func (_e *ContextRequest_Expecter) InputMap(key interface{}, defaultValue ...interface{}) *ContextRequest_InputMap_Call {
 	return &ContextRequest_InputMap_Call{Call: _e.mock.On("InputMap",
 		append([]interface{}{key}, defaultValue...)...)}
 }
 
-func (_c *ContextRequest_InputMap_Call) Run(run func(key string, defaultValue ...map[string]string)) *ContextRequest_InputMap_Call {
+func (_c *ContextRequest_InputMap_Call) Run(run func(key string, defaultValue ...map[string]interface{})) *ContextRequest_InputMap_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := make([]map[string]string, len(args)-1)
+		variadicArgs := make([]map[string]interface{}, len(args)-1)
 		for i, a := range args[1:] {
 			if a != nil {
-				variadicArgs[i] = a.(map[string]string)
+				variadicArgs[i] = a.(map[string]interface{})
 			}
 		}
 		run(args[0].(string), variadicArgs...)
@@ -956,17 +1060,80 @@ func (_c *ContextRequest_InputMap_Call) Run(run func(key string, defaultValue ..
 	return _c
 }
 
-func (_c *ContextRequest_InputMap_Call) Return(_a0 map[string]string) *ContextRequest_InputMap_Call {
+func (_c *ContextRequest_InputMap_Call) Return(_a0 map[string]interface{}) *ContextRequest_InputMap_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *ContextRequest_InputMap_Call) RunAndReturn(run func(string, ...map[string]string) map[string]string) *ContextRequest_InputMap_Call {
+func (_c *ContextRequest_InputMap_Call) RunAndReturn(run func(string, ...map[string]interface{}) map[string]interface{}) *ContextRequest_InputMap_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// Ip provides a mock function with given fields:
+// InputMapArray provides a mock function with given fields: key, defaultValue
+func (_m *ContextRequest) InputMapArray(key string, defaultValue ...[]map[string]interface{}) []map[string]interface{} {
+	_va := make([]interface{}, len(defaultValue))
+	for _i := range defaultValue {
+		_va[_i] = defaultValue[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, key)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InputMapArray")
+	}
+
+	var r0 []map[string]interface{}
+	if rf, ok := ret.Get(0).(func(string, ...[]map[string]interface{}) []map[string]interface{}); ok {
+		r0 = rf(key, defaultValue...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]map[string]interface{})
+		}
+	}
+
+	return r0
+}
+
+// ContextRequest_InputMapArray_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InputMapArray'
+type ContextRequest_InputMapArray_Call struct {
+	*mock.Call
+}
+
+// InputMapArray is a helper method to define mock.On call
+//   - key string
+//   - defaultValue ...[]map[string]interface{}
+func (_e *ContextRequest_Expecter) InputMapArray(key interface{}, defaultValue ...interface{}) *ContextRequest_InputMapArray_Call {
+	return &ContextRequest_InputMapArray_Call{Call: _e.mock.On("InputMapArray",
+		append([]interface{}{key}, defaultValue...)...)}
+}
+
+func (_c *ContextRequest_InputMapArray_Call) Run(run func(key string, defaultValue ...[]map[string]interface{})) *ContextRequest_InputMapArray_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([][]map[string]interface{}, len(args)-1)
+		for i, a := range args[1:] {
+			if a != nil {
+				variadicArgs[i] = a.([]map[string]interface{})
+			}
+		}
+		run(args[0].(string), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *ContextRequest_InputMapArray_Call) Return(_a0 []map[string]interface{}) *ContextRequest_InputMapArray_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ContextRequest_InputMapArray_Call) RunAndReturn(run func(string, ...[]map[string]interface{}) []map[string]interface{}) *ContextRequest_InputMapArray_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Ip provides a mock function with no fields
 func (_m *ContextRequest) Ip() string {
 	ret := _m.Called()
 
@@ -1011,7 +1178,7 @@ func (_c *ContextRequest_Ip_Call) RunAndReturn(run func() string) *ContextReques
 	return _c
 }
 
-// Method provides a mock function with given fields:
+// Method provides a mock function with no fields
 func (_m *ContextRequest) Method() string {
 	ret := _m.Called()
 
@@ -1056,7 +1223,7 @@ func (_c *ContextRequest_Method_Call) RunAndReturn(run func() string) *ContextRe
 	return _c
 }
 
-// Next provides a mock function with given fields:
+// Next provides a mock function with no fields
 func (_m *ContextRequest) Next() {
 	_m.Called()
 }
@@ -1084,11 +1251,11 @@ func (_c *ContextRequest_Next_Call) Return() *ContextRequest_Next_Call {
 }
 
 func (_c *ContextRequest_Next_Call) RunAndReturn(run func()) *ContextRequest_Next_Call {
-	_c.Call.Return(run)
+	_c.Run(run)
 	return _c
 }
 
-// Origin provides a mock function with given fields:
+// Origin provides a mock function with no fields
 func (_m *ContextRequest) Origin() *nethttp.Request {
 	ret := _m.Called()
 
@@ -1135,7 +1302,52 @@ func (_c *ContextRequest_Origin_Call) RunAndReturn(run func() *nethttp.Request) 
 	return _c
 }
 
-// Path provides a mock function with given fields:
+// OriginPath provides a mock function with no fields
+func (_m *ContextRequest) OriginPath() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for OriginPath")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// ContextRequest_OriginPath_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OriginPath'
+type ContextRequest_OriginPath_Call struct {
+	*mock.Call
+}
+
+// OriginPath is a helper method to define mock.On call
+func (_e *ContextRequest_Expecter) OriginPath() *ContextRequest_OriginPath_Call {
+	return &ContextRequest_OriginPath_Call{Call: _e.mock.On("OriginPath")}
+}
+
+func (_c *ContextRequest_OriginPath_Call) Run(run func()) *ContextRequest_OriginPath_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ContextRequest_OriginPath_Call) Return(_a0 string) *ContextRequest_OriginPath_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ContextRequest_OriginPath_Call) RunAndReturn(run func() string) *ContextRequest_OriginPath_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Path provides a mock function with no fields
 func (_m *ContextRequest) Path() string {
 	ret := _m.Called()
 
@@ -1180,7 +1392,7 @@ func (_c *ContextRequest_Path_Call) RunAndReturn(run func() string) *ContextRequ
 	return _c
 }
 
-// Queries provides a mock function with given fields:
+// Queries provides a mock function with no fields
 func (_m *ContextRequest) Queries() map[string]string {
 	ret := _m.Called()
 
@@ -1705,7 +1917,7 @@ func (_c *ContextRequest_RouteInt64_Call) RunAndReturn(run func(string) int64) *
 	return _c
 }
 
-// Session provides a mock function with given fields:
+// Session provides a mock function with no fields
 func (_m *ContextRequest) Session() session.Session {
 	ret := _m.Called()
 
@@ -1800,7 +2012,7 @@ func (_c *ContextRequest_SetSession_Call) RunAndReturn(run func(session.Session)
 	return _c
 }
 
-// Url provides a mock function with given fields:
+// Url provides a mock function with no fields
 func (_m *ContextRequest) Url() string {
 	ret := _m.Called()
 

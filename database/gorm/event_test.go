@@ -8,12 +8,22 @@ import (
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
 
-	"github.com/goravel/framework/database/orm"
 	"github.com/goravel/framework/support/carbon"
+	"github.com/goravel/framework/support/convert"
 )
 
+type Model struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+	Timestamps
+}
+
+type Timestamps struct {
+	CreatedAt *carbon.DateTime `gorm:"autoCreateTime;column:created_at" json:"created_at"`
+	UpdatedAt *carbon.DateTime `gorm:"autoUpdateTime;column:updated_at" json:"updated_at"`
+}
+
 type TestEventModel struct {
-	orm.Model
+	Model
 	Name     string
 	Avatar   string
 	IsAdmin  bool
@@ -24,10 +34,11 @@ type TestEventModel struct {
 }
 
 var testNow = time.Now().Add(-1 * time.Second)
+
 var testEventModel = TestEventModel{
-	Model: orm.Model{
+	Model: Model{
 		ID: 1,
-		Timestamps: orm.Timestamps{
+		Timestamps: Timestamps{
 			CreatedAt: carbon.NewDateTime(carbon.FromStdTime(testNow)),
 		},
 	},
@@ -39,7 +50,8 @@ var testEventModel = TestEventModel{
 	ManageAt: testNow,
 	high:     1,
 }
-var testQuery = &QueryImpl{
+
+var testQuery = &Query{
 	instance: &gorm.DB{
 		Statement: &gorm.Statement{
 			Selects: []string{},
@@ -62,18 +74,18 @@ func (s *EventTestSuite) SetupTest() {
 		NewEvent(testQuery, &testEventModel, map[string]any{"i_d": 1, "created_at": carbon.NewDateTime(carbon.FromStdTime(testNow)), "updated_at": carbon.NewDateTime(carbon.FromStdTime(testNow)), "avatar": "avatar1", "is_admin": false, "manage": 1, "admin_at": time.Now(), "manage_at": testNow}),
 		NewEvent(testQuery, &testEventModel, map[string]any{"ID": 1, "CreatedAt": carbon.NewDateTime(carbon.FromStdTime(testNow)), "UpdatedAt": carbon.NewDateTime(carbon.FromStdTime(testNow)), "Avatar": "avatar1", "IsAdmin": false, "IsManage": 1, "AdminAt": time.Now(), "ManageAt": testNow}),
 		NewEvent(testQuery, &testEventModel, TestEventModel{
-			Model: orm.Model{
+			Model: Model{
 				ID: 1,
-				Timestamps: orm.Timestamps{
+				Timestamps: Timestamps{
 					CreatedAt: carbon.NewDateTime(carbon.FromStdTime(testNow)),
 					UpdatedAt: carbon.NewDateTime(carbon.FromStdTime(testNow)),
 				},
 			},
 			Avatar: "avatar1", IsAdmin: false, IsManage: 1, AdminAt: time.Now(), ManageAt: testNow}),
 		NewEvent(testQuery, &testEventModel, &TestEventModel{
-			Model: orm.Model{
+			Model: Model{
 				ID: 1,
-				Timestamps: orm.Timestamps{
+				Timestamps: Timestamps{
 					CreatedAt: carbon.NewDateTime(carbon.FromStdTime(testNow)),
 					UpdatedAt: carbon.NewDateTime(carbon.FromStdTime(testNow)),
 				},
@@ -83,8 +95,9 @@ func (s *EventTestSuite) SetupTest() {
 }
 
 func (s *EventTestSuite) TestSetAttribute() {
+	// dest is map
 	dest := map[string]any{"avatar": "avatar1"}
-	query := &QueryImpl{
+	query := &Query{
 		instance: &gorm.DB{
 			Statement: &gorm.Statement{
 				Selects: []string{},
@@ -107,6 +120,34 @@ func (s *EventTestSuite) TestSetAttribute() {
 	s.Equal("avatar2", avatar)
 	avatar = event.GetAttribute("avatar")
 	s.Equal("avatar2", avatar)
+
+	// dest is struct
+	dest1 := &TestEventModel{
+		Avatar: "avatar1",
+	}
+	query1 := &Query{
+		instance: &gorm.DB{
+			Statement: &gorm.Statement{
+				Selects: []string{},
+				Omits:   []string{},
+				Dest:    dest1,
+			},
+		},
+	}
+
+	event = NewEvent(query1, &testEventModel, dest1)
+
+	event.SetAttribute("Name", "name1")
+	name = event.GetAttribute("Name")
+	s.Equal(name, "name1")
+	name = event.GetAttribute("name")
+	s.Equal(name, "name1")
+
+	event.SetAttribute("Avatar", "avatar2")
+	avatar = event.GetAttribute("Avatar")
+	s.Equal("avatar2", avatar)
+	avatar = event.GetAttribute("avatar")
+	s.Equal("avatar2", avatar)
 }
 
 func (s *EventTestSuite) TestGetAttribute() {
@@ -119,9 +160,9 @@ func (s *EventTestSuite) TestGetAttribute() {
 			"Avatar":    "avatar1",
 		}),
 		NewEvent(testQuery, &testEventModel, TestEventModel{
-			Model: orm.Model{
+			Model: Model{
 				ID: 2,
-				Timestamps: orm.Timestamps{
+				Timestamps: Timestamps{
 					CreatedAt: carbon.NewDateTime(now),
 				},
 			},
@@ -213,7 +254,7 @@ func (s *EventTestSuite) TestValidColumn() {
 		s.True(event.validColumn("manage"))
 		s.False(event.validColumn("age"))
 
-		event.query = &QueryImpl{
+		event.query = &Query{
 			instance: &gorm.DB{
 				Statement: &gorm.Statement{
 					Selects: []string{"name"},
@@ -226,7 +267,7 @@ func (s *EventTestSuite) TestValidColumn() {
 		s.False(event.validColumn("avatar"))
 		s.False(event.validColumn("Avatar"))
 
-		event.query = &QueryImpl{
+		event.query = &Query{
 			instance: &gorm.DB{
 				Statement: &gorm.Statement{
 					Selects: []string{},
@@ -304,22 +345,47 @@ func (s *EventTestSuite) TestColumnNames() {
 			"admin_at":   "admin_at",
 			"ManageAt":   "manage_at",
 			"manage_at":  "manage_at",
-		}, event.ColumnNames())
+		}, event.getColumnNames())
 	}
 }
 
 func TestStructToMap(t *testing.T) {
+	type TestStruct struct {
+		Model
+		Name     string
+		Avatar   *string
+		IsAdmin  bool
+		IsManage int `gorm:"column:manage"`
+		AdminAt  time.Time
+		high     int
+	}
+
+	testStruct := TestStruct{
+		Model: Model{
+			ID: 1,
+			Timestamps: Timestamps{
+				CreatedAt: carbon.NewDateTime(carbon.FromStdTime(testNow)),
+				UpdatedAt: carbon.NewDateTime(carbon.FromStdTime(testNow)),
+			},
+		},
+		Name:     "name",
+		Avatar:   convert.Pointer("avatar"),
+		IsAdmin:  true,
+		IsManage: 2,
+		AdminAt:  testNow,
+		high:     1,
+	}
+
 	assert.EqualValues(t, map[string]any{
-		"i_d":        testEventModel.ID,
-		"created_at": testEventModel.CreatedAt,
-		"updated_at": testEventModel.UpdatedAt,
-		"name":       testEventModel.Name,
-		"avatar":     testEventModel.Avatar,
-		"is_admin":   testEventModel.IsAdmin,
-		"manage":     testEventModel.IsManage,
-		"admin_at":   testEventModel.AdminAt,
-		"manage_at":  testEventModel.ManageAt,
-	}, structToMap(testEventModel))
+		"i_d":        testStruct.ID,
+		"created_at": testStruct.CreatedAt,
+		"updated_at": testStruct.UpdatedAt,
+		"name":       testStruct.Name,
+		"avatar":     testStruct.Avatar,
+		"is_admin":   testStruct.IsAdmin,
+		"manage":     testStruct.IsManage,
+		"admin_at":   testStruct.AdminAt,
+	}, structToMap(testStruct))
 }
 
 func TestStructNameToDbColumnName(t *testing.T) {

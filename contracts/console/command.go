@@ -27,7 +27,7 @@ type Context interface {
 	// Comment writes a comment message to the console.
 	Comment(message string)
 	// Confirm prompts the user for a confirmation.
-	Confirm(question string, option ...ConfirmOption) (bool, error)
+	Confirm(question string, option ...ConfirmOption) bool
 	// Argument get the value of a command argument.
 	Argument(index int) string
 	// Arguments get all the arguments passed to command.
@@ -64,10 +64,14 @@ type Context interface {
 	Secret(question string, option ...SecretOption) (string, error)
 	// Spinner creates a new spinner instance.
 	Spinner(message string, option SpinnerOption) error
+	// Success writes a success message to the console.
+	Success(message string)
 	// Warning writes a warning message to the console.
 	Warning(message string)
 	// WithProgressBar executes a callback with a progress bar.
 	WithProgressBar(items []any, callback func(any) error) ([]any, error)
+	// TwoColumnDetail writes a two column detail to the console.
+	TwoColumnDetail(first, second string, filler ...rune)
 }
 
 type Progress interface {

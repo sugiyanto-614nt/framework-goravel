@@ -1,27 +1,43 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base"
+    "config:recommended"
   ],
   "labels": [
     "🤖 Dependencies"
   ],
-  "commitMessagePrefix": "chore(deps): ",
+  "commitMessagePrefix": "chore: ",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "platformAutomerge": true,
+  "schedule": [
+    "* 0-3 * * 1"
+  ],
   "postUpdateOptions": [
     "gomodTidy"
   ],
   "packageRules": [
     {
-      "description": "Automerge non-major updates",
+      "groupName": "non-major dependencies",
       "matchUpdateTypes": [
-        "minor",
-        "patch"
+        "digest",
+        "pin",
+        "patch",
+        "minor"
       ],
-      "matchCurrentVersion": "!/^0/",
-      "automerge": true
+      "automerge": true,
+      "matchFileNames": ["**/go.mod", ".github/**"]
+    },
+    {
+      "groupName": "upgrade DB packages",
+      "automerge": true,
+      "matchPackageNames": ["github.com/goravel/mysql", "github.com/goravel/postgres", "github.com/goravel/sqlite", "github.com/goravel/sqlserver"],
+      "allowedVersions": ">=0.0.0",
+      "matchFileNames": ["tests/go.mod"]
     }
   ],
-  "ignoreDeps": [
-    "github.com/brianvoe/gofakeit/v6"
-  ]
+  "ignoreDeps": ["github.com/vektra/mockery/v2", "github.com/dromara/carbon/v2"],
+  "ignorePaths": []
 }

@@ -3,6 +3,8 @@
 package schedule
 
 import (
+	context "context"
+
 	schedule "github.com/goravel/framework/contracts/schedule"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -116,6 +118,53 @@ func (_c *Schedule_Command_Call) RunAndReturn(run func(string) schedule.Event) *
 	return _c
 }
 
+// Events provides a mock function with no fields
+func (_m *Schedule) Events() []schedule.Event {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Events")
+	}
+
+	var r0 []schedule.Event
+	if rf, ok := ret.Get(0).(func() []schedule.Event); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]schedule.Event)
+		}
+	}
+
+	return r0
+}
+
+// Schedule_Events_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Events'
+type Schedule_Events_Call struct {
+	*mock.Call
+}
+
+// Events is a helper method to define mock.On call
+func (_e *Schedule_Expecter) Events() *Schedule_Events_Call {
+	return &Schedule_Events_Call{Call: _e.mock.On("Events")}
+}
+
+func (_c *Schedule_Events_Call) Run(run func()) *Schedule_Events_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *Schedule_Events_Call) Return(_a0 []schedule.Event) *Schedule_Events_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Schedule_Events_Call) RunAndReturn(run func() []schedule.Event) *Schedule_Events_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Register provides a mock function with given fields: events
 func (_m *Schedule) Register(events []schedule.Event) {
 	_m.Called(events)
@@ -145,11 +194,11 @@ func (_c *Schedule_Register_Call) Return() *Schedule_Register_Call {
 }
 
 func (_c *Schedule_Register_Call) RunAndReturn(run func([]schedule.Event)) *Schedule_Register_Call {
-	_c.Call.Return(run)
+	_c.Run(run)
 	return _c
 }
 
-// Run provides a mock function with given fields:
+// Run provides a mock function with no fields
 func (_m *Schedule) Run() {
 	_m.Called()
 }
@@ -177,6 +226,65 @@ func (_c *Schedule_Run_Call) Return() *Schedule_Run_Call {
 }
 
 func (_c *Schedule_Run_Call) RunAndReturn(run func()) *Schedule_Run_Call {
+	_c.Run(run)
+	return _c
+}
+
+// Shutdown provides a mock function with given fields: ctx
+func (_m *Schedule) Shutdown(ctx ...context.Context) error {
+	_va := make([]interface{}, len(ctx))
+	for _i := range ctx {
+		_va[_i] = ctx[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Shutdown")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(...context.Context) error); ok {
+		r0 = rf(ctx...)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// Schedule_Shutdown_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Shutdown'
+type Schedule_Shutdown_Call struct {
+	*mock.Call
+}
+
+// Shutdown is a helper method to define mock.On call
+//   - ctx ...context.Context
+func (_e *Schedule_Expecter) Shutdown(ctx ...interface{}) *Schedule_Shutdown_Call {
+	return &Schedule_Shutdown_Call{Call: _e.mock.On("Shutdown",
+		append([]interface{}{}, ctx...)...)}
+}
+
+func (_c *Schedule_Shutdown_Call) Run(run func(ctx ...context.Context)) *Schedule_Shutdown_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]context.Context, len(args)-0)
+		for i, a := range args[0:] {
+			if a != nil {
+				variadicArgs[i] = a.(context.Context)
+			}
+		}
+		run(variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *Schedule_Shutdown_Call) Return(_a0 error) *Schedule_Shutdown_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Schedule_Shutdown_Call) RunAndReturn(run func(...context.Context) error) *Schedule_Shutdown_Call {
 	_c.Call.Return(run)
 	return _c
 }

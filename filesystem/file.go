@@ -1,7 +1,6 @@
 package filesystem
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/goravel/framework/contracts/config"
 	"github.com/goravel/framework/contracts/filesystem"
+	"github.com/goravel/framework/errors"
 	supportfile "github.com/goravel/framework/support/file"
 	"github.com/goravel/framework/support/str"
 )
@@ -25,8 +25,12 @@ type File struct {
 }
 
 func NewFile(file string) (*File, error) {
+	if ConfigFacade == nil {
+		return nil, errors.ConfigFacadeNotSet.SetModule(errors.ModuleFilesystem)
+	}
+
 	if !supportfile.Exists(file) {
-		return nil, errors.New("file doesn't exist")
+		return nil, errors.FilesystemFileNotExist
 	}
 
 	return &File{
@@ -39,6 +43,10 @@ func NewFile(file string) (*File, error) {
 }
 
 func NewFileFromRequest(fileHeader *multipart.FileHeader) (*File, error) {
+	if ConfigFacade == nil {
+		return nil, errors.ConfigFacadeNotSet.SetModule(errors.ModuleFilesystem)
+	}
+
 	src, err := fileHeader.Open()
 	if err != nil {
 		return nil, err
@@ -123,9 +131,25 @@ func (f *File) Size() (int64, error) {
 }
 
 func (f *File) Store(path string) (string, error) {
+	if err := f.validateStorageFacade(); err != nil {
+		return "", err
+	}
+
 	return f.storage.Disk(f.disk).PutFile(path, f)
 }
 
 func (f *File) StoreAs(path string, name string) (string, error) {
+	if err := f.validateStorageFacade(); err != nil {
+		return "", err
+	}
+
 	return f.storage.Disk(f.disk).PutFileAs(path, f, name)
+}
+
+func (f *File) validateStorageFacade() error {
+	if f.storage == nil {
+		return errors.StorageFacadeNotSet.SetModule(errors.ModuleFilesystem)
+	}
+
+	return nil
 }

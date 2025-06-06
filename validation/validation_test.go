@@ -1,20 +1,27 @@
 package validation
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cast"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	contractshttp "github.com/goravel/framework/contracts/http"
 	httpvalidate "github.com/goravel/framework/contracts/validation"
+	"github.com/goravel/framework/errors"
+	"github.com/goravel/framework/http"
 )
 
 func TestMake(t *testing.T) {
 	type Data struct {
 		A string
 	}
+
+	ctx := http.NewContext()
+	// nolint:all
+	ctx.WithValue("test", "test")
 
 	tests := []struct {
 		description        string
@@ -54,7 +61,7 @@ func TestMake(t *testing.T) {
 			options: []httpvalidate.Option{
 				Filters(map[string]string{"a": "trim"}),
 			},
-			expectErr: errors.New("data must be map[string]any or map[string][]string or struct"),
+			expectErr: errors.ValidationDataInvalidType,
 		},
 		{
 			description: "error when data is empty map",
@@ -63,13 +70,13 @@ func TestMake(t *testing.T) {
 			options: []httpvalidate.Option{
 				Filters(map[string]string{"a": "trim"}),
 			},
-			expectErr: errors.New("data can't be empty"),
+			expectErr: errors.ValidationEmptyData,
 		},
 		{
 			description: "error when rule is empty map",
 			data:        map[string]any{"a": "b"},
 			rules:       map[string]string{},
-			expectErr:   errors.New("rules can't be empty"),
+			expectErr:   errors.ValidationEmptyRules,
 		},
 		{
 			description: "error when PrepareForValidation returns error",
@@ -77,11 +84,11 @@ func TestMake(t *testing.T) {
 			rules:       map[string]string{"a": "required"},
 			options: []httpvalidate.Option{
 				Filters(map[string]string{"a": "trim"}),
-				PrepareForValidation(func(data httpvalidate.Data) error {
-					return errors.New("error")
+				PrepareForValidation(ctx, func(ctx contractshttp.Context, data httpvalidate.Data) error {
+					return assert.AnError
 				}),
 			},
-			expectErr: errors.New("error"),
+			expectErr: assert.AnError,
 		},
 		{
 			description: "success when data is map[string]any and with PrepareForValidation",
@@ -89,7 +96,7 @@ func TestMake(t *testing.T) {
 			rules:       map[string]string{"a": "required"},
 			options: []httpvalidate.Option{
 				Filters(map[string]string{"a": "trim"}),
-				PrepareForValidation(func(data httpvalidate.Data) error {
+				PrepareForValidation(ctx, func(ctx contractshttp.Context, data httpvalidate.Data) error {
 					if _, exist := data.Get("a"); exist {
 						return data.Set("a", "c")
 					}
@@ -99,6 +106,23 @@ func TestMake(t *testing.T) {
 			},
 			expectValidator: true,
 			expectData:      Data{A: "c"},
+		},
+		{
+			description: "success when calling PrepareForValidation with ctx",
+			data:        map[string]any{"a": "   b  "},
+			rules:       map[string]string{"a": "required"},
+			options: []httpvalidate.Option{
+				Filters(map[string]string{"a": "trim"}),
+				PrepareForValidation(ctx, func(ctx contractshttp.Context, data httpvalidate.Data) error {
+					if _, exist := data.Get("a"); exist {
+						return data.Set("a", ctx.Value("test"))
+					}
+
+					return nil
+				}),
+			},
+			expectValidator: true,
+			expectData:      Data{A: "test"},
 		},
 		{
 			description: "contain errors when data is map[string]any and with Messages, Attributes, PrepareForValidation",
@@ -112,7 +136,7 @@ func TestMake(t *testing.T) {
 				Attributes(map[string]string{
 					"b": "B",
 				}),
-				PrepareForValidation(func(data httpvalidate.Data) error {
+				PrepareForValidation(ctx, func(ctx contractshttp.Context, data httpvalidate.Data) error {
 					if _, exist := data.Get("a"); exist {
 						return data.Set("a", "c")
 					}
@@ -131,7 +155,7 @@ func TestMake(t *testing.T) {
 			rules:       map[string]string{"A": "required"},
 			options: []httpvalidate.Option{
 				Filters(map[string]string{"A": "trim"}),
-				PrepareForValidation(func(data httpvalidate.Data) error {
+				PrepareForValidation(ctx, func(ctx contractshttp.Context, data httpvalidate.Data) error {
 					if _, exist := data.Get("A"); exist {
 						return data.Set("A", "c")
 					}
@@ -154,7 +178,7 @@ func TestMake(t *testing.T) {
 				Attributes(map[string]string{
 					"B": "b",
 				}),
-				PrepareForValidation(func(data httpvalidate.Data) error {
+				PrepareForValidation(ctx, func(ctx contractshttp.Context, data httpvalidate.Data) error {
 					if _, exist := data.Get("a"); exist {
 						return data.Set("a", "c")
 					}
@@ -174,7 +198,9 @@ func TestMake(t *testing.T) {
 			validation := NewValidation()
 			validator, err := validation.Make(test.data, test.rules, test.options...)
 			assert.Equal(t, test.expectValidator, validator != nil, test.description)
-			assert.Equal(t, test.expectErr, err, test.description)
+			if test.expectErr != nil {
+				assert.ErrorIs(t, err, test.expectErr, test.description)
+			}
 
 			if validator != nil {
 				var data Data
@@ -190,9 +216,154 @@ func TestMake(t *testing.T) {
 	}
 }
 
+// Fix: https://github.com/goravel/goravel/issues/533
+func TestBindWithNestedStruct(t *testing.T) {
+	type Data struct {
+		A map[string][]string `json:"a" form:"a"`
+		B map[string][]string `json:"b" form:"b"`
+	}
+	validation := NewValidation()
+	validator, err := validation.Make(map[string]any{
+		"a": map[string]any{
+			"b": []any{"c", "d"},
+		},
+		"b": map[string][]string{
+			"b": {"c", "d"},
+		},
+	}, map[string]string{"a": "required|map", "b": "required|map"})
+
+	require.NoError(t, err)
+	require.NotNil(t, validator)
+	require.False(t, validator.Fails())
+
+	var data Data
+	require.NoError(t, validator.Bind(&data))
+	require.Equal(t, Data{
+		A: map[string][]string{
+			"b": {"c", "d"},
+		},
+		B: map[string][]string{
+			"b": {"c", "d"},
+		},
+	}, data)
+}
+
 type Case struct {
 	description string
 	setup       func(Case)
+}
+
+func TestRule_Regex(t *testing.T) {
+	validation := NewValidation()
+	tests := []Case{
+		{
+			description: "success with valid regex match",
+			setup: func(c Case) {
+				validator, err := validation.Make(map[string]any{
+					"email": "test@example.com",
+				}, map[string]string{
+					"email": "regex:^\\S+@\\S+\\.\\S+$",
+				})
+				assert.Nil(t, err, c.description)
+				assert.NotNil(t, validator, c.description)
+				assert.False(t, validator.Fails(), c.description)
+			},
+		},
+		{
+			description: "error with invalid regex match",
+			setup: func(c Case) {
+				validator, err := validation.Make(map[string]any{
+					"email": "testexample.com",
+				}, map[string]string{
+					"email": "regex:^\\S+@\\S+\\.\\S+$",
+				})
+				assert.Nil(t, err, c.description)
+				assert.NotNil(t, validator, c.description)
+				assert.Equal(t, map[string]string{
+					"regex": "email value does not pass the regex check",
+				}, validator.Errors().Get("email"))
+			},
+		},
+		{
+			description: "success with regex and nested structure",
+			setup: func(c Case) {
+				validator, err := validation.Make(map[string]any{
+					"user": map[string]string{
+						"email": "test@example.com",
+					},
+				}, map[string]string{
+					"user.email": "regex:^\\S+@\\S+\\.\\S+$",
+				})
+				assert.Nil(t, err, c.description)
+				assert.NotNil(t, validator, c.description)
+				assert.False(t, validator.Fails(), c.description)
+			},
+		},
+		{
+			description: "error with regex and nested structure",
+			setup: func(c Case) {
+				validator, err := validation.Make(map[string]any{
+					"user": map[string]string{
+						"email": "testexample.com",
+					},
+				}, map[string]string{
+					"user.email": "regex:^\\S+@\\S+\\.\\S+$",
+				})
+				assert.Nil(t, err, c.description)
+				assert.NotNil(t, validator, c.description)
+				assert.Equal(t, map[string]string{
+					"regex": "user.email value does not pass the regex check",
+				}, validator.Errors().Get("user.email"))
+			},
+		},
+		{
+			description: "panic when regex pattern is missing",
+			setup: func(c Case) {
+				assert.Panics(t, func() {
+					_, err := validation.Make(map[string]any{
+						"email": "test@example.com",
+					}, map[string]string{
+						"email": "regex:",
+					})
+					assert.NotNil(t, err, c.description)
+				}, c.description)
+			},
+		},
+		{
+			description: "success with valid regexp match",
+			setup: func(c Case) {
+				validator, err := validation.Make(map[string]any{
+					"phone": "+1-800-555-5555",
+				}, map[string]string{
+					"phone": "regexp:^\\+\\d{1,3}-\\d{3}-\\d{3}-\\d{4}$",
+				})
+				assert.Nil(t, err, c.description)
+				assert.NotNil(t, validator, c.description)
+				assert.False(t, validator.Fails(), c.description)
+			},
+		},
+		{
+			description: "error with invalid regexp match",
+			setup: func(c Case) {
+				validator, err := validation.Make(map[string]any{
+					"phone": "18005555555",
+				}, map[string]string{
+					"phone": "regexp:^\\+\\d{1,3}-\\d{3}-\\d{3}-\\d{4}$",
+				})
+				assert.Nil(t, err, c.description)
+				assert.NotNil(t, validator, c.description)
+				assert.Equal(t, map[string]string{
+					"regexp": "phone must match pattern ^\\+\\d{1,3}-\\d{3}-\\d{3}-\\d{4}$",
+				}, validator.Errors().Get("phone"))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			test.setup(test)
+		})
+	}
 }
 
 func TestRule_Required(t *testing.T) {
@@ -2781,7 +2952,11 @@ func (receiver *Uppercase) Signature() string {
 func (receiver *Uppercase) Passes(data httpvalidate.Data, val any, options ...any) bool {
 	name, exist := data.Get("name")
 
-	return strings.ToUpper(val.(string)) == val.(string) && len(val.(string)) == cast.ToInt(options[0]) && name == val && exist
+	if len(options) > 0 {
+		return strings.ToUpper(val.(string)) == val.(string) && len(val.(string)) == cast.ToInt(options[0]) && name == val && exist
+	}
+
+	return false
 }
 
 // Message Get the validation error message.
@@ -2801,7 +2976,11 @@ func (receiver *Lowercase) Signature() string {
 func (receiver *Lowercase) Passes(data httpvalidate.Data, val any, options ...any) bool {
 	address, exist := data.Get("address")
 
-	return strings.ToLower(val.(string)) == val.(string) && len(val.(string)) == cast.ToInt(options[0]) && address == val && exist
+	if len(options) > 0 {
+		return strings.ToLower(val.(string)) == val.(string) && len(val.(string)) == cast.ToInt(options[0]) && address == val && exist
+	}
+
+	return false
 }
 
 // Message Get the validation error message.

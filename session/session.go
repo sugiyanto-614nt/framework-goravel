@@ -8,6 +8,7 @@ import (
 
 	"github.com/goravel/framework/contracts/foundation"
 	sessioncontract "github.com/goravel/framework/contracts/session"
+	"github.com/goravel/framework/support/color"
 	supportmaps "github.com/goravel/framework/support/maps"
 	"github.com/goravel/framework/support/str"
 )
@@ -150,18 +151,27 @@ func (s *Session) Remove(key string) any {
 func (s *Session) Save() error {
 	s.ageFlashData()
 
-	data, err := s.json.Marshal(s.attributes)
+	data, err := s.json.MarshalString(s.attributes)
 	if err != nil {
 		return err
 	}
 
-	if err = s.driver.Write(s.GetID(), string(data)); err != nil {
+	if err = s.driver.Write(s.GetID(), data); err != nil {
 		return err
 	}
 
 	s.started = false
 
 	return nil
+}
+
+func (s *Session) SetDriver(driver sessioncontract.Driver) sessioncontract.Session {
+	if driver == nil {
+		return s
+	}
+
+	s.driver = driver
+	return s
 }
 
 func (s *Session) SetID(id string) sessioncontract.Session {
@@ -217,8 +227,7 @@ func (s *Session) migrate(destroy ...bool) error {
 	}
 
 	if shouldDestroy {
-		err := s.driver.Destroy(s.GetID())
-		if err != nil {
+		if err := s.driver.Destroy(s.GetID()); err != nil {
 			return err
 		}
 	}
@@ -231,12 +240,17 @@ func (s *Session) migrate(destroy ...bool) error {
 func (s *Session) readFromHandler() map[string]any {
 	value, err := s.driver.Read(s.GetID())
 	if err != nil {
+		color.Errorln(err)
 		return nil
 	}
 	var data map[string]any
-	if err := s.json.Unmarshal([]byte(value), &data); err != nil {
-		return nil
+	if value != "" {
+		if err := s.json.UnmarshalString(value, &data); err != nil {
+			color.Errorln(err)
+			return nil
+		}
 	}
+
 	return data
 }
 

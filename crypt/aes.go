@@ -5,13 +5,14 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"io"
 
 	"github.com/goravel/framework/contracts/config"
 	"github.com/goravel/framework/contracts/foundation"
+	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support"
 	"github.com/goravel/framework/support/color"
+	"github.com/goravel/framework/support/convert"
 )
 
 type AES struct {
@@ -20,24 +21,27 @@ type AES struct {
 }
 
 // NewAES returns a new AES hasher.
-func NewAES(config config.Config, json foundation.Json) *AES {
+func NewAES(config config.Config, json foundation.Json) (*AES, error) {
 	key := config.GetString("app.key")
 
 	// Don't use AES in artisan when the key is empty.
-	if support.Env == support.EnvArtisan && len(key) == 0 {
-		return nil
+	if support.RuntimeMode == support.RuntimeArtisan && len(key) == 0 {
+		return nil, errors.CryptAppKeyNotSet
 	}
 
+	keyLength := len(key)
 	// check key length before using it
-	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
-		color.Red().Println("[Crypt] Empty or invalid APP_KEY, please reset it.\nExample command:\ngo run . artisan key:generate")
-		return nil
+	if keyLength != 16 && keyLength != 24 && keyLength != 32 {
+		color.Errorf("[Crypt] Invalid APP_KEY length. Expected 16, 24, or 32 bytes, but got %d bytes.\n", len(key))
+		color.Default().Println("Please reset it using the following command:")
+		color.Default().Println("go run . artisan key:generate")
+		return nil, errors.CryptInvalidAppKeyLength.Args(keyLength)
 	}
-	keyBytes := []byte(key)
+
 	return &AES{
-		key:  keyBytes,
+		key:  convert.UnsafeBytes(key),
 		json: json,
-	}
+	}, nil
 }
 
 // EncryptString encrypts the given string, and returns the iv and ciphertext as base64 encoded strings.
@@ -47,7 +51,7 @@ func (b *AES) EncryptString(value string) (string, error) {
 		return "", err
 	}
 
-	plaintext := []byte(value)
+	plaintext := convert.UnsafeBytes(value)
 
 	iv := make([]byte, 12)
 	if _, err = io.ReadFull(rand.Reader, iv); err != nil {
@@ -89,10 +93,10 @@ func (b *AES) DecryptString(payload string) (string, error) {
 
 	// check if the json payload has the correct keys
 	if _, ok := decodeJson["iv"]; !ok {
-		return "", errors.New("decrypt payload error: missing iv key")
+		return "", errors.CryptMissingIVKey
 	}
 	if _, ok := decodeJson["value"]; !ok {
-		return "", errors.New("decrypt payload error: missing value key")
+		return "", errors.CryptMissingValueKey
 	}
 
 	decodeIv := decodeJson["iv"]
@@ -113,5 +117,5 @@ func (b *AES) DecryptString(payload string) (string, error) {
 		return "", err
 	}
 
-	return string(plaintext), nil
+	return convert.UnsafeString(plaintext), nil
 }

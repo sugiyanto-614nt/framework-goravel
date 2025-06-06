@@ -1,23 +1,20 @@
 package mail
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/goravel/framework/contracts/mail"
-	queuecontract "github.com/goravel/framework/contracts/queue"
-	configmock "github.com/goravel/framework/mocks/config"
-	logmock "github.com/goravel/framework/mocks/log"
+	contractsqueue "github.com/goravel/framework/contracts/queue"
+	"github.com/goravel/framework/foundation/json"
+	mocksconfig "github.com/goravel/framework/mocks/config"
 	"github.com/goravel/framework/queue"
+	"github.com/goravel/framework/support"
 	"github.com/goravel/framework/support/color"
-	testingdocker "github.com/goravel/framework/support/docker"
-	"github.com/goravel/framework/support/env"
 	"github.com/goravel/framework/support/file"
 )
 
@@ -25,58 +22,39 @@ var testBcc, testCc, testTo, testFromAddress, testFromName string
 
 type ApplicationTestSuite struct {
 	suite.Suite
-	redisPort int
+	mockConfig *mocksconfig.Config
 }
 
 func TestApplicationTestSuite(t *testing.T) {
-	if env.IsWindows() {
-		t.Skip("Skipping tests of using docker")
-	}
-
-	if !file.Exists("../.env") && os.Getenv("MAIL_HOST") == "" {
-		color.Red().Println("No mail tests run, need create .env based on .env.example, then initialize it")
+	if !file.Exists(support.EnvFilePath) && os.Getenv("MAIL_HOST") == "" {
+		color.Errorln("No mail tests run, need create .env based on .env.example, then initialize it")
 		return
 	}
 
-	redisDocker := testingdocker.NewRedis()
-	assert.Nil(t, redisDocker.Build())
-
-	suite.Run(t, &ApplicationTestSuite{
-		redisPort: redisDocker.Config().Port,
-	})
-
-	assert.Nil(t, redisDocker.Stop())
+	suite.Run(t, new(ApplicationTestSuite))
 }
 
-func (s *ApplicationTestSuite) SetupTest() {}
+func (s *ApplicationTestSuite) SetupTest() {
+}
 
-func (s *ApplicationTestSuite) TestSendMailBy465Port() {
-	mockConfig := mockConfig(465, s.redisPort)
-	app := NewApplication(mockConfig, nil)
+func (s *ApplicationTestSuite) TestSendMail() {
+	s.mockConfig = mockConfig(465)
+
+	app := NewApplication(s.mockConfig, nil)
 	s.Nil(app.To([]string{testTo}).
 		Cc([]string{testCc}).
 		Bcc([]string{testBcc}).
 		Attach([]string{"../logo.png"}).
 		Subject("Goravel Test 465").
 		Content(Html("<h1>Hello Goravel</h1>")).
+		Headers(map[string]string{"Test-Mailer-Port": "465"}).
 		Send())
 }
 
-func (s *ApplicationTestSuite) TestSendMailBy587Port() {
-	mockConfig := mockConfig(587, s.redisPort)
-	app := NewApplication(mockConfig, nil)
-	s.Nil(app.To([]string{testTo}).
-		Cc([]string{testCc}).
-		Bcc([]string{testBcc}).
-		Attach([]string{"../logo.png"}).
-		Subject("Goravel Test 587").
-		Content(Html("<h1>Hello Goravel</h1>")).
-		Send())
-}
+func (s *ApplicationTestSuite) TestSendMailWithFromBy587Port() {
+	s.mockConfig = mockConfig(587)
 
-func (s *ApplicationTestSuite) TestSendMailWithFrom() {
-	mockConfig := mockConfig(587, s.redisPort)
-	app := NewApplication(mockConfig, nil)
+	app := NewApplication(s.mockConfig, nil)
 	s.Nil(app.From(Address(testFromAddress, testFromName)).
 		To([]string{testTo}).
 		Cc([]string{testCc}).
@@ -84,122 +62,78 @@ func (s *ApplicationTestSuite) TestSendMailWithFrom() {
 		Attach([]string{"../logo.png"}).
 		Subject("Goravel Test 587 With From").
 		Content(Html("<h1>Hello Goravel</h1>")).
+		Headers(map[string]string{"Test-Mailer-Port": "587", "Test-Mailer-From": testFromAddress}).
 		Send())
 }
 
 func (s *ApplicationTestSuite) TestSendMailWithMailable() {
-	mockConfig := mockConfig(587, s.redisPort)
-	app := NewApplication(mockConfig, nil)
+	s.mockConfig = mockConfig(465)
+
+	app := NewApplication(s.mockConfig, nil)
 	s.Nil(app.Send(NewTestMailable()))
 }
 
 func (s *ApplicationTestSuite) TestQueueMail() {
-	mockConfig := mockConfig(587, s.redisPort)
-	mockLog := &logmock.Log{}
+	s.mockConfig = mockConfig(465)
+	s.mockConfig.EXPECT().GetString("queue.default").Return("redis").Once()
+	s.mockConfig.EXPECT().GetString("queue.connections.redis.queue", "default").Return("default").Once()
+	s.mockConfig.EXPECT().GetInt("queue.connections.redis.concurrent", 1).Return(2).Once()
+	s.mockConfig.EXPECT().GetString("app.name", "goravel").Return("goravel").Once()
+	s.mockConfig.EXPECT().GetBool("app.debug").Return(true).Once()
+	s.mockConfig.EXPECT().GetString("queue.failed.database").Return("mysql").Once()
+	s.mockConfig.EXPECT().GetString("queue.failed.table").Return("failed_jobs").Once()
 
-	queueFacade := queue.NewApplication(mockConfig, mockLog)
-	queueFacade.Register([]queuecontract.Job{
-		NewSendMailJob(mockConfig),
+	queueFacade := queue.NewApplication(queue.NewConfig(s.mockConfig), nil, queue.NewJobStorer(), json.New(), nil)
+	queueFacade.Register([]contractsqueue.Job{
+		NewSendMailJob(s.mockConfig),
 	})
 
-	app := NewApplication(mockConfig, queueFacade)
+	app := NewApplication(s.mockConfig, queueFacade)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	go func(ctx context.Context) {
-		s.Nil(queueFacade.Worker().Run())
-
-		for range ctx.Done() {
-			return
-		}
-	}(ctx)
-	time.Sleep(3 * time.Second)
 	s.Nil(app.To([]string{testTo}).
 		Cc([]string{testCc}).
 		Bcc([]string{testBcc}).
 		Attach([]string{"../logo.png"}).
 		Subject("Goravel Test Queue").
 		Content(Html("<h1>Hello Goravel</h1>")).
+		Headers(map[string]string{"Test-Mailer": "QueueMail"}).
 		Queue())
 	time.Sleep(3 * time.Second)
 }
 
-func (s *ApplicationTestSuite) TestQueueMailWithConnection() {
-	mockConfig := mockConfig(587, s.redisPort)
-	mockLog := &logmock.Log{}
-
-	queueFacade := queue.NewApplication(mockConfig, mockLog)
-	queueFacade.Register([]queuecontract.Job{
-		NewSendMailJob(mockConfig),
-	})
-
-	app := NewApplication(mockConfig, queueFacade)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	go func(ctx context.Context) {
-		s.Nil(queueFacade.Worker(queuecontract.Args{
-			Connection: "redis",
-			Queue:      "test",
-		}).Run())
-
-		for range ctx.Done() {
-			return
-		}
-	}(ctx)
-	time.Sleep(3 * time.Second)
-	s.Nil(app.To([]string{testTo}).
-		Cc([]string{testCc}).
-		Bcc([]string{testBcc}).
-		Attach([]string{"../logo.png"}).
-		Subject("Goravel Test Queue with connection").
-		Content(Html("<h1>Hello Goravel</h1>")).
-		Queue(Queue().OnConnection("redis").OnQueue("test")))
-	time.Sleep(3 * time.Second)
-}
-
 func (s *ApplicationTestSuite) TestQueueMailWithMailable() {
-	mockConfig := mockConfig(587, s.redisPort)
-	mockLog := &logmock.Log{}
+	s.mockConfig = mockConfig(465)
+	s.mockConfig.EXPECT().GetString("queue.default").Return("redis").Once()
+	s.mockConfig.EXPECT().GetString("queue.connections.redis.queue", "default").Return("default").Once()
+	s.mockConfig.EXPECT().GetInt("queue.connections.redis.concurrent", 1).Return(2).Once()
+	s.mockConfig.EXPECT().GetString("app.name", "goravel").Return("goravel").Once()
+	s.mockConfig.EXPECT().GetBool("app.debug").Return(true).Once()
+	s.mockConfig.EXPECT().GetString("queue.failed.database").Return("mysql").Once()
+	s.mockConfig.EXPECT().GetString("queue.failed.table").Return("failed_jobs").Once()
 
-	queueFacade := queue.NewApplication(mockConfig, mockLog)
-	queueFacade.Register([]queuecontract.Job{
-		NewSendMailJob(mockConfig),
+	queueFacade := queue.NewApplication(queue.NewConfig(s.mockConfig), nil, queue.NewJobStorer(), json.New(), nil)
+	queueFacade.Register([]contractsqueue.Job{
+		NewSendMailJob(s.mockConfig),
 	})
 
-	app := NewApplication(mockConfig, queueFacade)
+	app := NewApplication(s.mockConfig, queueFacade)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	go func(ctx context.Context) {
-		s.Nil(queueFacade.Worker().Run())
-
-		for range ctx.Done() {
-			return
-		}
-	}(ctx)
-	time.Sleep(3 * time.Second)
 	s.Nil(app.Queue(NewTestMailable()))
-	time.Sleep(3 * time.Second)
 }
 
-func mockConfig(mailPort, redisPort int) *configmock.Config {
-	mockConfig := &configmock.Config{}
+func mockConfig(mailPort int) *mocksconfig.Config {
+	mockConfig := &mocksconfig.Config{}
 	mockConfig.On("GetString", "app.name").Return("goravel")
-	mockConfig.On("GetBool", "app.debug").Return(false)
-	mockConfig.On("GetString", "queue.default").Return("redis")
+	mockConfig.On("GetString", "queue.default").Return("sync")
+	mockConfig.On("GetString", "queue.connections.sync.queue", "default").Return("default")
 	mockConfig.On("GetString", "queue.connections.sync.driver").Return("sync")
-	mockConfig.On("GetString", "queue.connections.redis.driver").Return("redis")
-	mockConfig.On("GetString", "queue.connections.redis.connection").Return("default")
-	mockConfig.On("GetString", "queue.connections.redis.queue", "default").Return("default")
-	mockConfig.On("GetString", "database.redis.default.host").Return("localhost")
-	mockConfig.On("GetString", "database.redis.default.password").Return("")
-	mockConfig.On("GetInt", "database.redis.default.port").Return(redisPort)
-	mockConfig.On("GetInt", "database.redis.default.database").Return(0)
+	mockConfig.On("GetInt", "queue.connections.sync.concurrent", 1).Return(1)
+	mockConfig.On("GetString", "queue.failed.database").Return("database")
+	mockConfig.On("GetString", "queue.failed.table").Return("failed_jobs")
 
-	if file.Exists("../.env") {
+	if file.Exists(support.EnvFilePath) {
 		vip := viper.New()
-		vip.SetConfigName("../.env")
+		vip.SetConfigName(support.EnvFilePath)
 		vip.SetConfigType("env")
 		vip.AddConfigPath(".")
 		_ = vip.ReadInConfig()
@@ -263,8 +197,14 @@ func (m *TestMailable) Envelope() *mail.Envelope {
 		Bcc:     []string{testBcc},
 		Cc:      []string{testCc},
 		From:    Address(testFromAddress, testFromName),
-		Subject: "Goravel Test 587 With Mailable",
+		Subject: "Goravel Test Mailable",
 		To:      []string{testTo},
+	}
+}
+
+func (m *TestMailable) Headers() map[string]string {
+	return map[string]string{
+		"Test-Mailer": "TestMailable",
 	}
 }
 

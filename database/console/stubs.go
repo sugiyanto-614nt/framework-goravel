@@ -4,15 +4,29 @@ type Stubs struct {
 }
 
 func (r Stubs) Model() string {
-	return `package DummyPackage
+	return `package {{.PackageName}}
 
+{{if .Imports -}}
 import (
-	"github.com/goravel/framework/database/orm"
+{{- range $path, $_ := .Imports }}
+	"{{$path}}"
+{{- end }}
 )
+{{- end }}
 
-type DummyModel struct {
-	orm.Model
+type {{.StructName}} struct {
+{{- range .Embeds }}
+	{{.}}
+{{- end }}
+{{- range .Fields }}
+	{{.}}
+{{- end }}
 }
+
+{{- if .TableNameMethod }}
+
+{{.TableNameMethod}}
+{{- end }}
 `
 }
 
@@ -26,19 +40,7 @@ import (
 
 type DummyObserver struct{}
 
-func (u *DummyObserver) Retrieved(event orm.Event) error {
-	return nil
-}
-
-func (u *DummyObserver) Creating(event orm.Event) error {
-	return nil
-}
-
 func (u *DummyObserver) Created(event orm.Event) error {
-	return nil
-}
-
-func (u *DummyObserver) Updating(event orm.Event) error {
 	return nil
 }
 
@@ -46,23 +48,7 @@ func (u *DummyObserver) Updated(event orm.Event) error {
 	return nil
 }
 
-func (u *DummyObserver) Saving(event orm.Event) error {
-	return nil
-}
-
-func (u *DummyObserver) Saved(event orm.Event) error {
-	return nil
-}
-
-func (u *DummyObserver) Deleting(event orm.Event) error {
-	return nil
-}
-
 func (u *DummyObserver) Deleted(event orm.Event) error {
-	return nil
-}
-
-func (u *DummyObserver) ForceDeleting(event orm.Event) error {
 	return nil
 }
 
@@ -80,7 +66,7 @@ type DummySeeder struct {
 
 // Signature The name and signature of the seeder.
 func (s *DummySeeder) Signature() string {
-	return "DummySeeder"
+	return "DummySignature"
 }
 
 // Run executes the seeder logic.

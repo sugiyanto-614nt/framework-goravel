@@ -7,8 +7,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/goravel/framework/database/orm"
+	"github.com/goravel/framework/support/carbon"
 )
+
+type Model struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+	Timestamps
+}
+
+type Timestamps struct {
+	CreatedAt *carbon.DateTime `gorm:"autoCreateTime;column:created_at" json:"created_at"`
+	UpdatedAt *carbon.DateTime `gorm:"autoUpdateTime;column:updated_at" json:"updated_at"`
+}
 
 type TestStruct struct {
 	ID   int `gorm:"primaryKey"`
@@ -49,10 +59,10 @@ func TestGetID(t *testing.T) {
 			},
 		},
 		{
-			description: "return value with orm.Model",
+			description: "return value with Model",
 			setup: func(description string) {
 				type User struct {
-					orm.Model
+					Model
 					Name   string
 					Avatar string
 				}
@@ -86,10 +96,10 @@ func TestGetID(t *testing.T) {
 			},
 		},
 		{
-			description: "return value with orm.Model",
+			description: "return value with Model",
 			setup: func(description string) {
 				type User struct {
-					orm.Model
+					Model
 					Name   string
 					Avatar string
 				}
@@ -178,6 +188,48 @@ func TestGetIDByReflect(t *testing.T) {
 				result := GetIDByReflect(tpe, v)
 
 				assert.Nil(t, result)
+			},
+		},
+		{
+			description: "TestStruct.ID type Submodel Id String",
+			setup: func(description string) {
+				id := "testId"
+				type User struct {
+					TestStructString
+					Name string
+				}
+
+				ts := User{Name: "name"}
+				ts.ID = id
+				v := reflect.ValueOf(ts)
+				tpe := reflect.TypeOf(ts)
+
+				result := GetIDByReflect(tpe, v)
+
+				assert.Equal(t, id, result)
+			},
+		},
+		{
+			description: "TestStruct.ID type SubSubmodel Id String",
+			setup: func(description string) {
+				id := "testId"
+				type UserFirst struct {
+					TestStructString
+					Name string
+				}
+				type UserSecond struct {
+					UserFirst
+					Avatar string
+				}
+
+				ts := UserSecond{}
+				ts.ID = id
+				v := reflect.ValueOf(ts)
+				tpe := reflect.TypeOf(ts)
+
+				result := GetIDByReflect(tpe, v)
+
+				assert.Equal(t, id, result)
 			},
 		},
 	}

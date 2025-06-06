@@ -17,6 +17,7 @@ type Application struct {
 	clone       int
 	config      config.Config
 	from        mail.Address
+	headers     map[string]string
 	html        string
 	queue       queuecontract.Queue
 	subject     string
@@ -65,20 +66,55 @@ func (r *Application) From(address mail.Address) mail.Mail {
 	return instance
 }
 
+func (r *Application) Headers(headers map[string]string) mail.Mail {
+	instance := r.instance()
+	instance.headers = headers
+
+	return instance
+}
+
 func (r *Application) Queue(mailable ...mail.Mailable) error {
 	if len(mailable) > 0 {
 		r.setUsingMailable(mailable[0])
 	}
 
 	job := r.queue.Job(NewSendMailJob(r.config), []queuecontract.Arg{
-		{Value: r.subject, Type: "string"},
-		{Value: r.html, Type: "string"},
-		{Value: r.from.Address, Type: "string"},
-		{Value: r.from.Name, Type: "string"},
-		{Value: r.to, Type: "[]string"},
-		{Value: r.cc, Type: "[]string"},
-		{Value: r.bcc, Type: "[]string"},
-		{Value: r.attachments, Type: "[]string"},
+		{
+			Type:  "string",
+			Value: r.subject,
+		},
+		{
+			Type:  "string",
+			Value: r.html,
+		},
+		{
+			Type:  "string",
+			Value: r.from.Address,
+		},
+		{
+			Type:  "string",
+			Value: r.from.Name,
+		},
+		{
+			Type:  "[]string",
+			Value: r.to,
+		},
+		{
+			Type:  "[]string",
+			Value: r.cc,
+		},
+		{
+			Type:  "[]string",
+			Value: r.bcc,
+		},
+		{
+			Type:  "[]string",
+			Value: r.attachments,
+		},
+		{
+			Type:  "[]string",
+			Value: convertMapHeadersToSlice(r.headers),
+		},
 	})
 
 	if len(mailable) > 0 {
@@ -99,7 +135,7 @@ func (r *Application) Send(mailable ...mail.Mailable) error {
 	if len(mailable) > 0 {
 		r.setUsingMailable(mailable[0])
 	}
-	return SendMail(r.config, r.subject, r.html, r.from.Address, r.from.Name, r.to, r.cc, r.bcc, r.attachments)
+	return SendMail(r.config, r.subject, r.html, r.from.Address, r.from.Name, r.to, r.cc, r.bcc, r.attachments, r.headers)
 }
 
 func (r *Application) Subject(subject string) mail.Mail {
@@ -135,6 +171,11 @@ func (r *Application) setUsingMailable(mailable mail.Mailable) {
 	if len(mailable.Attachments()) > 0 {
 		r.attachments = mailable.Attachments()
 	}
+
+	if len(mailable.Headers()) > 0 {
+		r.headers = mailable.Headers()
+	}
+
 	if envelope := mailable.Envelope(); envelope != nil {
 		if envelope.From.Address != "" {
 			r.from = envelope.From
@@ -154,7 +195,7 @@ func (r *Application) setUsingMailable(mailable mail.Mailable) {
 	}
 }
 
-func SendMail(config config.Config, subject, html, fromAddress, fromName string, to, cc, bcc, attaches []string) error {
+func SendMail(config config.Config, subject, html, fromAddress, fromName string, to, cc, bcc, attaches []string, headers map[string]string) error {
 	e := NewEmail()
 	if fromAddress == "" {
 		e.From = fmt.Sprintf("%s <%s>", config.GetString("mail.from.name"), config.GetString("mail.from.address"))
@@ -176,6 +217,10 @@ func SendMail(config config.Config, subject, html, fromAddress, fromName string,
 		if _, err := e.AttachFile(attach); err != nil {
 			return err
 		}
+	}
+
+	for key, val := range headers {
+		e.Headers.Add(key, val)
 	}
 
 	port := config.GetInt("mail.port")
