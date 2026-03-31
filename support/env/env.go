@@ -5,8 +5,21 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
+	"slices"
 	"strings"
+
+	"github.com/goravel/framework/support"
 )
+
+// MainPath returns the package name of application, eg: goravel.
+func MainPath() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		return info.Main.Path
+	}
+
+	return "goravel"
+}
 
 // IsAir checks if the application is running using Air.
 func IsAir() bool {
@@ -26,13 +39,23 @@ func IsArm() bool {
 }
 
 func IsArtisan() bool {
-	for _, arg := range os.Args {
-		if arg == "artisan" {
-			return true
-		}
+	return slices.Contains(os.Args, "artisan")
+}
+
+func IsBootstrapSetup() bool {
+	bootstrapPath := strings.Trim(support.Config.Paths.Bootstrap, "/")
+	if bootstrapPath == "" {
+		return false
 	}
 
-	return false
+	paths := append([]string{support.RelativePath}, strings.Split(bootstrapPath, "/")...)
+	paths = append(paths, "app.go")
+	data, err := os.ReadFile(filepath.Join(paths...))
+	if err != nil {
+		return false
+	}
+
+	return strings.Contains(string(data), "foundation.Setup().")
 }
 
 // IsDarwin returns whether the current operating system is Darwin.
@@ -68,13 +91,7 @@ func IsLinux() bool {
 
 // IsNoANSI checks if the application is running with the --no-ansi flag.
 func IsNoANSI() bool {
-	for _, arg := range os.Args {
-		if arg == "--no-ansi" {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(os.Args, "--no-ansi")
 }
 
 // IsTesting checks if the application is running in testing mode.

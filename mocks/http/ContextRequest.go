@@ -700,6 +700,51 @@ func (_c *ContextRequest_Host_Call) RunAndReturn(run func() string) *ContextRequ
 	return _c
 }
 
+// Info provides a mock function with no fields
+func (_m *ContextRequest) Info() http.Info {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Info")
+	}
+
+	var r0 http.Info
+	if rf, ok := ret.Get(0).(func() http.Info); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(http.Info)
+	}
+
+	return r0
+}
+
+// ContextRequest_Info_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Info'
+type ContextRequest_Info_Call struct {
+	*mock.Call
+}
+
+// Info is a helper method to define mock.On call
+func (_e *ContextRequest_Expecter) Info() *ContextRequest_Info_Call {
+	return &ContextRequest_Info_Call{Call: _e.mock.On("Info")}
+}
+
+func (_c *ContextRequest_Info_Call) Run(run func()) *ContextRequest_Info_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ContextRequest_Info_Call) Return(_a0 http.Info) *ContextRequest_Info_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ContextRequest_Info_Call) RunAndReturn(run func() http.Info) *ContextRequest_Info_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Input provides a mock function with given fields: key, defaultValue
 func (_m *ContextRequest) Input(key string, defaultValue ...string) string {
 	_va := make([]interface{}, len(defaultValue))
@@ -1219,6 +1264,51 @@ func (_c *ContextRequest_Method_Call) Return(_a0 string) *ContextRequest_Method_
 }
 
 func (_c *ContextRequest_Method_Call) RunAndReturn(run func() string) *ContextRequest_Method_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Name provides a mock function with no fields
+func (_m *ContextRequest) Name() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Name")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// ContextRequest_Name_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Name'
+type ContextRequest_Name_Call struct {
+	*mock.Call
+}
+
+// Name is a helper method to define mock.On call
+func (_e *ContextRequest_Expecter) Name() *ContextRequest_Name_Call {
+	return &ContextRequest_Name_Call{Call: _e.mock.On("Name")}
+}
+
+func (_c *ContextRequest_Name_Call) Run(run func()) *ContextRequest_Name_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ContextRequest_Name_Call) Return(_a0 string) *ContextRequest_Name_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ContextRequest_Name_Call) RunAndReturn(run func() string) *ContextRequest_Name_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -2058,7 +2148,7 @@ func (_c *ContextRequest_Url_Call) RunAndReturn(run func() string) *ContextReque
 }
 
 // Validate provides a mock function with given fields: rules, options
-func (_m *ContextRequest) Validate(rules map[string]string, options ...validation.Option) (validation.Validator, error) {
+func (_m *ContextRequest) Validate(rules map[string]interface{}, options ...validation.Option) (validation.Validator, error) {
 	_va := make([]interface{}, len(options))
 	for _i := range options {
 		_va[_i] = options[_i]
@@ -2074,10 +2164,10 @@ func (_m *ContextRequest) Validate(rules map[string]string, options ...validatio
 
 	var r0 validation.Validator
 	var r1 error
-	if rf, ok := ret.Get(0).(func(map[string]string, ...validation.Option) (validation.Validator, error)); ok {
+	if rf, ok := ret.Get(0).(func(map[string]interface{}, ...validation.Option) (validation.Validator, error)); ok {
 		return rf(rules, options...)
 	}
-	if rf, ok := ret.Get(0).(func(map[string]string, ...validation.Option) validation.Validator); ok {
+	if rf, ok := ret.Get(0).(func(map[string]interface{}, ...validation.Option) validation.Validator); ok {
 		r0 = rf(rules, options...)
 	} else {
 		if ret.Get(0) != nil {
@@ -2085,7 +2175,7 @@ func (_m *ContextRequest) Validate(rules map[string]string, options ...validatio
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(map[string]string, ...validation.Option) error); ok {
+	if rf, ok := ret.Get(1).(func(map[string]interface{}, ...validation.Option) error); ok {
 		r1 = rf(rules, options...)
 	} else {
 		r1 = ret.Error(1)
@@ -2100,14 +2190,14 @@ type ContextRequest_Validate_Call struct {
 }
 
 // Validate is a helper method to define mock.On call
-//   - rules map[string]string
+//   - rules map[string]interface{}
 //   - options ...validation.Option
 func (_e *ContextRequest_Expecter) Validate(rules interface{}, options ...interface{}) *ContextRequest_Validate_Call {
 	return &ContextRequest_Validate_Call{Call: _e.mock.On("Validate",
 		append([]interface{}{rules}, options...)...)}
 }
 
-func (_c *ContextRequest_Validate_Call) Run(run func(rules map[string]string, options ...validation.Option)) *ContextRequest_Validate_Call {
+func (_c *ContextRequest_Validate_Call) Run(run func(rules map[string]interface{}, options ...validation.Option)) *ContextRequest_Validate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		variadicArgs := make([]validation.Option, len(args)-1)
 		for i, a := range args[1:] {
@@ -2115,7 +2205,7 @@ func (_c *ContextRequest_Validate_Call) Run(run func(rules map[string]string, op
 				variadicArgs[i] = a.(validation.Option)
 			}
 		}
-		run(args[0].(map[string]string), variadicArgs...)
+		run(args[0].(map[string]interface{}), variadicArgs...)
 	})
 	return _c
 }
@@ -2125,7 +2215,7 @@ func (_c *ContextRequest_Validate_Call) Return(_a0 validation.Validator, _a1 err
 	return _c
 }
 
-func (_c *ContextRequest_Validate_Call) RunAndReturn(run func(map[string]string, ...validation.Option) (validation.Validator, error)) *ContextRequest_Validate_Call {
+func (_c *ContextRequest_Validate_Call) RunAndReturn(run func(map[string]interface{}, ...validation.Option) (validation.Validator, error)) *ContextRequest_Validate_Call {
 	_c.Call.Return(run)
 	return _c
 }

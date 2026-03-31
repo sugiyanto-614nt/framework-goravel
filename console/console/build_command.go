@@ -2,22 +2,24 @@ package console
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"slices"
+	"runtime"
+	"strings"
 
 	"github.com/goravel/framework/contracts/config"
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
+	"github.com/goravel/framework/contracts/process"
 )
 
 type BuildCommand struct {
-	config config.Config
+	config  config.Config
+	process process.Process
 }
 
-func NewBuildCommand(config config.Config) *BuildCommand {
+func NewBuildCommand(config config.Config, process process.Process) *BuildCommand {
 	return &BuildCommand{
-		config: config,
+		config:  config,
+		process: process,
 	}
 }
 
@@ -36,21 +38,33 @@ func (r *BuildCommand) Extend() command.Extend {
 	return command.Extend{
 		Flags: []command.Flag{
 			&command.StringFlag{
+				Name:    "arch",
+				Aliases: []string{"a"},
+				Usage:   "Target architecture",
+				Value:   "amd64",
+			},
+			&command.StringFlag{
 				Name:    "os",
 				Aliases: []string{"o"},
-				Value:   "",
 				Usage:   "Target os",
 			},
 			&command.BoolFlag{
-				Name:    "static",
-				Aliases: []string{"s"},
-				Value:   false,
-				Usage:   "Static compilation",
+				Name:               "generate",
+				Aliases:            []string{"g"},
+				Value:              false,
+				Usage:              "Run go generate before building",
+				DisableDefaultText: true,
+			},
+			&command.BoolFlag{
+				Name:               "static",
+				Aliases:            []string{"s"},
+				Value:              false,
+				Usage:              "Static compilation",
+				DisableDefaultText: true,
 			},
 			&command.StringFlag{
 				Name:    "name",
 				Aliases: []string{"n"},
-				Value:   "",
 				Usage:   "Output binary name",
 			},
 		},
@@ -73,56 +87,53 @@ func (r *BuildCommand) Handle(ctx console.Context) error {
 
 	os := ctx.Option("os")
 	if os == "" {
-		os, err = ctx.Choice("Select target os", []console.Choice{
+		if os, err = ctx.Choice("Select target os", []console.Choice{
 			{Key: "Linux", Value: "linux"},
 			{Key: "Windows", Value: "windows"},
 			{Key: "Darwin", Value: "darwin"},
-		})
-		if err != nil {
+		}, console.ChoiceOption{Default: runtime.GOOS}); err != nil {
 			ctx.Error(fmt.Sprintf("Select target os error: %v", err))
 			return nil
 		}
 	}
 
-	validOs := []string{"linux", "windows", "darwin"}
-	if !slices.Contains(validOs, os) {
-		ctx.Error(fmt.Sprintf("Invalid os '%s' specified. Allowed values are: %v", os, validOs))
+	runner := r.process.Env(map[string]string{
+		"CGO_ENABLED": "0",
+		"GOOS":        os,
+		"GOARCH":      ctx.Option("arch"),
+	})
+
+	if ctx.OptionBool("generate") {
+		if res := runner.WithSpinner("Running go generate...").Run("go generate ./..."); res.Failed() {
+			ctx.Error(res.Error().Error())
+			return nil
+		}
+
+		ctx.Info("Go generate completed.")
+	}
+
+	if res := runner.WithSpinner("Building...").Run(generateCommand(ctx.Option("name"), ctx.OptionBool("static"))); res.Failed() {
+		ctx.Error(res.Error().Error())
 		return nil
 	}
 
-	if err := ctx.Spinner("Building...", console.SpinnerOption{
-		Action: func() error {
-			return r.build(os, generateCommand(ctx.Option("name"), ctx.OptionBool("static")))
-		},
-	}); err != nil {
-		ctx.Error(fmt.Sprintf("Build error: %v", err))
-	} else {
-		ctx.Info("Built successfully.")
-	}
+	ctx.Info("Built successfully.")
 
 	return nil
 }
 
-func (r *BuildCommand) build(system string, command []string) error {
-	os.Setenv("CGO_ENABLED", "0")
-	os.Setenv("GOOS", system)
-	os.Setenv("GOARCH", "amd64")
-
-	cmd := exec.Command(command[0], command[1:]...)
-	_, err := cmd.Output()
-	return err
-}
-
-func generateCommand(name string, static bool) []string {
-	command := []string{"go", "build"}
+func generateCommand(name string, static bool) string {
+	args := []string{"go", "build"}
 
 	if static {
-		command = append(command, "-ldflags", "-extldflags -static")
+		args = append(args, "-ldflags", `"-s -w -extldflags -static"`)
 	}
 
 	if name != "" {
-		command = append(command, "-o", name)
+		args = append(args, "-o", name)
 	}
 
-	return append(command, ".")
+	args = append(args, ".")
+
+	return strings.Join(args, " ")
 }

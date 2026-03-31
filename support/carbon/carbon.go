@@ -8,6 +8,26 @@ import (
 
 type Carbon = carbon.Carbon
 
+// New returns a new Carbon object.
+func New(time ...stdtime.Time) *Carbon {
+	return carbon.NewCarbon(time...)
+}
+
+// ZeroValue returns the zero value of Carbon object.
+func ZeroValue() *Carbon {
+	return carbon.ZeroValue()
+}
+
+// EpochValue returns the unix epoch value of Carbon object.
+func EpochValue() *Carbon {
+	return carbon.EpochValue()
+}
+
+// DefaultTimezone gets the default timezone.
+func DefaultTimezone() string {
+	return carbon.DefaultTimezone
+}
+
 // SetTimezone sets timezone.
 func SetTimezone(timezone string) {
 	carbon.SetTimezone(timezone)
@@ -25,7 +45,7 @@ func SetTestNow(c *Carbon) {
 
 // UnsetTestNow unsets the test time.
 //
-// Deprecated: it will be removed in the future, use ClearTestNow instead.
+// Deprecated: it will be removed in the future, use `ClearTestNow` instead.
 func UnsetTestNow() {
 	ClearTestNow()
 }
@@ -74,16 +94,16 @@ func ParseByFormat[T string | []string](value string, format T, timezone ...stri
 
 // ParseWithLayouts returns a Carbon object with multiple fuzzy layouts.
 //
-// Deprecated: it will be removed in the future, use ParseByLayout instead.
+// Deprecated: it will be removed in the future, use `ParseByLayout` instead.
 func ParseWithLayouts(value string, layouts []string, timezone ...string) *Carbon {
-	return carbon.ParseWithLayouts(value, layouts, timezone...)
+	return ParseByLayout(value, layouts, timezone...)
 }
 
 // ParseWithFormats returns a Carbon object with multiple fuzzy formats.
 //
-// Deprecated: it will be removed in the future, use ParseByFormat instead.
+// Deprecated: it will be removed in the future, use `ParseByFormat` instead.
 func ParseWithFormats(value string, formats []string, timezone ...string) *Carbon {
-	return carbon.ParseWithFormats(value, formats, timezone...)
+	return ParseByFormat(value, formats, timezone...)
 }
 
 // FromTimestamp returns a Carbon object of given timestamp.
@@ -169,4 +189,24 @@ func FromTimeNano(hour int, minute int, second int, nanosecond int, timezone ...
 // FromStdTime returns a Carbon object of given time.Time object.
 func FromStdTime(time stdtime.Time, timezone ...string) *Carbon {
 	return carbon.CreateFromStdTime(time, timezone...)
+}
+
+// FromLunar returns a Carbon object from Lunar date.
+func FromLunar(year, month, day int, isLeapMonth bool) *Carbon {
+	return carbon.CreateFromLunar(year, month, day, isLeapMonth)
+}
+
+// FromJulian returns a Carbon object from Julian Day or Modified Julian Day.
+func FromJulian(f float64) *Carbon {
+	return carbon.CreateFromJulian(f)
+}
+
+// FromPersian returns a Carbon object from Persian date.
+func FromPersian(year, month, day int) *Carbon {
+	return carbon.CreateFromPersian(year, month, day)
+}
+
+// FromHebrew returns a Carbon object from Hebrew date.
+func FromHebrew(year, month, day int) *Carbon {
+	return carbon.CreateFromHebrew(year, month, day)
 }

@@ -19,10 +19,14 @@ import (
 	mocksgrpc "github.com/goravel/framework/mocks/grpc"
 	mockshash "github.com/goravel/framework/mocks/hash"
 	mockshttp "github.com/goravel/framework/mocks/http"
+	mockshttpclient "github.com/goravel/framework/mocks/http/client"
 	mocksmail "github.com/goravel/framework/mocks/mail"
+	mocksprocess "github.com/goravel/framework/mocks/process"
 	mocksqueue "github.com/goravel/framework/mocks/queue"
+	mockstelemetry "github.com/goravel/framework/mocks/telemetry"
 	mockstranslation "github.com/goravel/framework/mocks/translation"
 	mocksvalidate "github.com/goravel/framework/mocks/validation"
+	mocksview "github.com/goravel/framework/mocks/view"
 	"github.com/goravel/framework/testing/utils"
 )
 
@@ -130,6 +134,13 @@ func (r *factory) Hash() *mockshash.Hash {
 	return mockHash
 }
 
+func (r *factory) Http() *mockshttpclient.Factory {
+	mockHttp := &mockshttpclient.Factory{}
+	r.app.On("MakeHttp").Return(mockHttp)
+
+	return mockHttp
+}
+
 func (r *factory) Lang(ctx context.Context) *mockstranslation.Translator {
 	mockTranslator := &mockstranslation.Translator{}
 	r.app.On("MakeLang", ctx).Return(mockTranslator)
@@ -165,6 +176,13 @@ func (r *factory) OrmQuery() *mocksorm.Query {
 
 func (r *factory) OrmToSql() *mocksorm.ToSql {
 	return &mocksorm.ToSql{}
+}
+
+func (r *factory) Process() *mocksprocess.Process {
+	mockProcess := &mocksprocess.Process{}
+	r.app.EXPECT().MakeProcess().Return(mockProcess)
+
+	return mockProcess
 }
 
 func (r *factory) Queue() *mocksqueue.Queue {
@@ -223,6 +241,13 @@ func (r *factory) StorageFile() *mocksfilesystem.File {
 	return &mocksfilesystem.File{}
 }
 
+func (r *factory) Telemetry() *mockstelemetry.Telemetry {
+	mockTelemetry := &mockstelemetry.Telemetry{}
+	r.app.EXPECT().MakeTelemetry().Return(mockTelemetry)
+
+	return mockTelemetry
+}
+
 func (r *factory) Validation() *mocksvalidate.Validation {
 	mockValidation := &mocksvalidate.Validation{}
 	r.app.On("MakeValidation").Return(mockValidation)
@@ -238,8 +263,8 @@ func (r *factory) ValidationErrors() *mocksvalidate.Errors {
 	return &mocksvalidate.Errors{}
 }
 
-func (r *factory) View() *mockshttp.View {
-	mockView := &mockshttp.View{}
+func (r *factory) View() *mocksview.View {
+	mockView := &mocksview.View{}
 	r.app.On("MakeView").Return(mockView)
 
 	return mockView

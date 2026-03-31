@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/goravel/framework/contracts/cache"
+	"github.com/goravel/framework/contracts/testing/docker"
+	frameworkerrors "github.com/goravel/framework/errors"
 	configmock "github.com/goravel/framework/mocks/config"
 	logmock "github.com/goravel/framework/mocks/log"
 )
@@ -47,6 +49,39 @@ func (s *DriverTestSuite) TestCustom() {
 	s.mockConfig.AssertExpectations(s.T())
 }
 
+func (s *DriverTestSuite) TestCustom_WithFactory() {
+	s.mockConfig.On("Get", "cache.stores.factory.via").Return(func() (cache.Driver, error) {
+		return &Store{}, nil
+	}).Twice()
+
+	store, err := s.driver.custom("factory")
+	s.NotNil(store)
+	s.Nil(err)
+
+	s.mockConfig.AssertExpectations(s.T())
+}
+
+func (s *DriverTestSuite) TestCustom_StoreContractNotFulfilled() {
+	s.mockConfig.On("Get", "cache.stores.invalid.via").Return("invalid").Twice()
+
+	store, err := s.driver.custom("invalid")
+	s.Nil(store)
+	s.ErrorIs(err, frameworkerrors.CacheStoreContractNotFulfilled)
+	s.EqualError(err, "invalid doesn't implement contracts/cache/store")
+
+	s.mockConfig.AssertExpectations(s.T())
+}
+
+func (s *DriverTestSuite) TestNew_UnsupportedDriver() {
+	s.mockConfig.On("GetString", "cache.stores.store.driver").Return("redis").Once()
+
+	store, err := s.driver.New("store")
+	s.Nil(store)
+	s.EqualError(err, "invalid driver: redis, only support memory, custom")
+
+	s.mockConfig.AssertExpectations(s.T())
+}
+
 func (s *DriverTestSuite) TestStore() {
 	s.mockConfig.On("GetString", "cache.stores.memory.driver").Return("memory").Once()
 	s.mockConfig.On("GetString", "cache.prefix").Return("goravel_cache").Once()
@@ -81,6 +116,10 @@ func (r *Store) Add(key string, value any, seconds time.Duration) bool {
 
 func (r *Store) Decrement(key string, value ...int64) (int64, error) {
 	return 1, nil
+}
+
+func (r *Store) Docker() (docker.CacheDriver, error) {
+	return nil, nil
 }
 
 // Forever Store an item in the cache indefinitely.

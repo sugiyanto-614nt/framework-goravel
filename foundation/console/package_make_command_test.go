@@ -49,8 +49,8 @@ func (s *PackageMakeCommandTestSuite) TestExtend() {
 
 			testCases := []struct {
 				name     string
-				got      interface{}
-				expected interface{}
+				got      any
+				expected any
 			}{
 				{"Name", flag.Name, "root"},
 				{"Aliases", flag.Aliases, []string{"r"}},
@@ -74,7 +74,20 @@ func (s *PackageMakeCommandTestSuite) TestHandle() {
 
 	beforeEach := func() {
 		mockContext = mocksconsole.NewContext(s.T())
+		// Create bootstrap/app.go to trigger IsBootstrapSetup() == true
+		_ = file.Create("bootstrap/app.go", `package bootstrap
+
+import "github.com/goravel/framework/foundation"
+
+func Boot() {
+	foundation.Setup().Start()
+}
+`)
 	}
+
+	s.T().Cleanup(func() {
+		_ = file.Remove("bootstrap")
+	})
 
 	tests := []struct {
 		name   string
@@ -104,11 +117,11 @@ func (s *PackageMakeCommandTestSuite) TestHandle() {
 				s.True(file.Exists("packages/sms/README.md"))
 				s.True(file.Exists("packages/sms/service_provider.go"))
 				s.True(file.Exists("packages/sms/sms.go"))
-				s.True(file.Exists("packages/sms/config/sms.go"))
 				s.True(file.Exists("packages/sms/contracts/sms.go"))
 				s.True(file.Exists("packages/sms/facades/sms.go"))
-				s.True(file.Contain("packages/sms/facades/sms.go", "goravel/packages/sms"))
-				s.True(file.Contain("packages/sms/facades/sms.go", "goravel/packages/sms/contracts"))
+				s.True(file.Contain("packages/sms/facades/sms.go", "github.com/goravel/framework/packages/sms"))
+				s.True(file.Contain("packages/sms/facades/sms.go", "github.com/goravel/framework/packages/sms/contracts"))
+				s.True(file.Exists("packages/sms/setup/stubs.go"))
 				s.True(file.Exists("packages/sms/setup/setup.go"))
 				s.NoError(file.Remove("packages"))
 			},
@@ -125,9 +138,9 @@ func (s *PackageMakeCommandTestSuite) TestHandle() {
 				s.True(file.Exists("package/github_com_goravel_sms_aws/README.md"))
 				s.True(file.Exists("package/github_com_goravel_sms_aws/service_provider.go"))
 				s.True(file.Exists("package/github_com_goravel_sms_aws/github_com_goravel_sms_aws.go"))
-				s.True(file.Exists("package/github_com_goravel_sms_aws/config/github_com_goravel_sms_aws.go"))
 				s.True(file.Exists("package/github_com_goravel_sms_aws/contracts/github_com_goravel_sms_aws.go"))
 				s.True(file.Exists("package/github_com_goravel_sms_aws/facades/github_com_goravel_sms_aws.go"))
+				s.True(file.Exists("package/github_com_goravel_sms_aws/setup/stubs.go"))
 				s.True(file.Exists("package/github_com_goravel_sms_aws/setup/setup.go"))
 				s.NoError(file.Remove("package"))
 			},

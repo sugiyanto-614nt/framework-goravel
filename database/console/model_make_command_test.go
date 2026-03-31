@@ -42,7 +42,12 @@ func TestModelMakeCommand(t *testing.T) {
 	assert.Nil(t, err)
 	expectedUserContent := `package models
 
+import (
+	"github.com/goravel/framework/database/orm"
+)
+
 type User struct {
+	orm.Model
 }
 `
 	assert.Equal(t, expectedUserContent, userModel)
@@ -68,7 +73,12 @@ type User struct {
 	assert.Nil(t, err)
 	expectedPhoneContent := `package User
 
+import (
+	"github.com/goravel/framework/database/orm"
+)
+
 type Phone struct {
+	orm.Model
 }
 `
 	assert.Equal(t, expectedPhoneContent, phoneModel)
@@ -116,8 +126,8 @@ import (
 )
 
 type Product struct {
-	orm.BaseModel
-	orm.NullableSoftDeletes
+	orm.Model
+	orm.SoftDeletes
 	Name  string        ` + "`json:\"name\" db:\"name\"`" + `
 	Price float64       ` + "`json:\"price\" db:\"price\"`" + `
 	Stock sql.NullInt32 ` + "`json:\"stock\" db:\"stock\"`" + `
@@ -179,7 +189,7 @@ func TestGenerateModelInfo(t *testing.T) {
 	assert.Equal(t, "func (r *User) TableName() string {\n\treturn \"users\"\n}", info.TableNameMethod)
 	assert.Equal(t, []string{
 		"orm.Model",
-		"orm.NullableSoftDeletes",
+		"orm.SoftDeletes",
 	}, info.Embeds)
 	assert.Equal(t, map[string]struct{}{
 		"database/sql": {},
@@ -202,7 +212,7 @@ func TestGenerateModelInfo(t *testing.T) {
 	assert.Equal(t, 2, len(info.Embeds))
 	assert.Contains(t, info.Fields[0], "Title")
 	assert.Equal(t, []string{
-		"orm.NullableTimestamps",
+		"orm.Timestamps",
 		"orm.SoftDeletes",
 	}, info.Embeds)
 
@@ -222,6 +232,16 @@ func TestGenerateModelInfo(t *testing.T) {
 	info, err = modelMakeCommand.generateModelInfo(columns, "Product", "products")
 	assert.Nil(t, err)
 	assert.Equal(t, 2, len(info.Fields))
+	assert.Equal(t, 0, len(info.Embeds))
+
+	// Test with empty Embeds and Fields (should use default orm.Model)
+	columns = []driver.Column{}
+
+	mockSchema.EXPECT().GoTypes().Return(goTypes).Once()
+
+	info, err = modelMakeCommand.generateModelInfo(columns, "Empty", "empty")
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(info.Fields))
 	assert.Equal(t, 0, len(info.Embeds))
 }
 
@@ -332,6 +352,74 @@ type User struct {
 `
 
 	result, err := modelMakeCommand.populateStub(stub, "models", "User", modelInfo)
+	assert.Nil(t, err)
+	assert.Equal(t, expectedContent, result)
+
+	// Test with empty fields and embeds (should get orm.Model)
+	stubs := Stubs{}
+	stub = stubs.Model()
+
+	modelInfo = modelDefinition{
+		Fields:          []string{},
+		Embeds:          []string{},
+		Imports:         map[string]struct{}{},
+		TableNameMethod: "",
+	}
+
+	expectedContent = `package models
+
+import (
+	"github.com/goravel/framework/database/orm"
+)
+
+type EmptyModel struct {
+	orm.Model
+}
+`
+
+	result, err = modelMakeCommand.populateStub(stub, "models", "EmptyModel", modelInfo)
+	assert.Nil(t, err)
+	assert.Equal(t, expectedContent, result)
+
+	// Test with fields only (should not get orm.Model)
+	modelInfo = modelDefinition{
+		Fields:          []string{"Name string"},
+		Embeds:          []string{},
+		Imports:         map[string]struct{}{},
+		TableNameMethod: "",
+	}
+
+	expectedContent = `package models
+
+type ModelWithFields struct {
+	Name string
+}
+`
+
+	result, err = modelMakeCommand.populateStub(stub, "models", "ModelWithFields", modelInfo)
+	assert.Nil(t, err)
+	assert.Equal(t, expectedContent, result)
+
+	// Test with embeds only (should not get orm.Model)
+	modelInfo = modelDefinition{
+		Fields:          []string{},
+		Embeds:          []string{"orm.Timestamps"},
+		Imports:         map[string]struct{}{"github.com/goravel/framework/database/orm": {}},
+		TableNameMethod: "",
+	}
+
+	expectedContent = `package models
+
+import (
+	"github.com/goravel/framework/database/orm"
+)
+
+type ModelWithEmbeds struct {
+	orm.Timestamps
+}
+`
+
+	result, err = modelMakeCommand.populateStub(stub, "models", "ModelWithEmbeds", modelInfo)
 	assert.Nil(t, err)
 	assert.Equal(t, expectedContent, result)
 }

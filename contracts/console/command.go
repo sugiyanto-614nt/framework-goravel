@@ -2,6 +2,11 @@ package console
 
 import (
 	"context"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
+	"github.com/urfave/cli/v3"
 
 	"github.com/goravel/framework/contracts/console/command"
 )
@@ -34,6 +39,8 @@ type Context interface {
 	Arguments() []string
 	// Info writes an information message to the console.
 	Info(message string)
+	// Instance gets the underlying cli.Command instance.
+	Instance() *cli.Command
 	// Error writes an error message to the console.
 	Error(message string)
 	// Line writes a string to the console.
@@ -60,18 +67,94 @@ type Context interface {
 	OptionInt64(key string) int64
 	// OptionInt64Slice looks up the value of a local Int64SliceFlag, returns nil if not found
 	OptionInt64Slice(key string) []int64
+	// ArgumentString looks up the value of a local ArgumentString, returns empty string if not found
+	ArgumentString(key string) string
+	// ArgumentStringSlice looks up the value of a local ArgumentStringSlice, returns nil if not found
+	ArgumentStringSlice(key string) []string
+	// ArgumentFloat32 looks up the value of a local ArgumentFloat32, returns zero if not found
+	ArgumentFloat32(key string) float32
+	// ArgumentFloat32Slice looks up the value of a local ArgumentFloat32Slice, returns nil if not found
+	ArgumentFloat32Slice(key string) []float32
+	// ArgumentFloat64 looks up the value of a local ArgumentFloat64, returns zero if not found
+	ArgumentFloat64(key string) float64
+	// ArgumentFloat64Slice looks up the value of a local ArgumentFloat64Slice, returns nil if not found
+	ArgumentFloat64Slice(key string) []float64
+	// ArgumentInt looks up the value of a local ArgumentInt, returns zero if not found
+	ArgumentInt(key string) int
+	// ArgumentIntSlice looks up the value of a local ArgumentIntSlice, returns nil if not found
+	ArgumentIntSlice(key string) []int
+	// ArgumentInt8 looks up the value of a local ArgumentInt8, returns zero if not found
+	ArgumentInt8(key string) int8
+	// ArgumentInt8Slice looks up the value of a local ArgumentInt8Slice, returns nil if not found
+	ArgumentInt8Slice(key string) []int8
+	// ArgumentInt16 looks up the value of a local ArgumentInt16, returns zero if not found
+	ArgumentInt16(key string) int16
+	// ArgumentInt16Slice looks up the value of a local ArgumentInt16Slice, returns nil if not found
+	ArgumentInt16Slice(key string) []int16
+	// ArgumentInt32 looks up the value of a local ArgumentInt32, returns zero if not found
+	ArgumentInt32(key string) int32
+	// ArgumentInt32Slice looks up the value of a local ArgumentInt32Slice, returns nil if not found
+	ArgumentInt32Slice(key string) []int32
+	// ArgumentInt64 looks up the value of a local ArgumentInt64, returns zero if not found
+	ArgumentInt64(key string) int64
+	// ArgumentInt64Slice looks up the value of a local ArgumentInt64Slice, returns nil if not found
+	ArgumentInt64Slice(key string) []int64
+	// ArgumentUint looks up the value of a local ArgumentUint, returns zero if not found
+	ArgumentUint(key string) uint
+	// ArgumentUint8 looks up the value of a local ArgumentUint8, returns zero if not found
+	ArgumentUint8(key string) uint8
+	// ArgumentUint16 looks up the value of a local ArgumentUint16, returns zero if not found
+	ArgumentUint16(key string) uint16
+	// ArgumentUint32 looks up the value of a local ArgumentUint32, returns zero if not found
+	ArgumentUint32(key string) uint32
+	// ArgumentUint64 looks up the value of a local ArgumentUint64, returns zero if not found
+	ArgumentUint64(key string) uint64
+	// ArgumentUintSlice looks up the value of a local ArgumentUintSlice, returns nil if not found
+	ArgumentUintSlice(key string) []uint
+	// ArgumentUint8Slice looks up the value of a local ArgumentUint8Slice, returns nil if not found
+	ArgumentUint8Slice(key string) []uint8
+	// ArgumentUint16Slice looks up the value of a local ArgumentUint16Slice, returns nil if not found
+	ArgumentUint16Slice(key string) []uint16
+	// ArgumentUint32Slice looks up the value of a local ArgumentUint32Slice, returns nil if not found
+	ArgumentUint32Slice(key string) []uint32
+	// ArgumentUint64Slice looks up the value of a local ArgumentUint64Slice, returns nil if not found
+	ArgumentUint64Slice(key string) []uint64
+	// ArgumentTimestamp looks up the value of a local ArgumentTimestamp, returns zero if not found
+	ArgumentTimestamp(key string) time.Time
+	// ArgumentTimestampSlice looks up the value of a local ArgumentTimestampSlice, returns nil if not found
+	ArgumentTimestampSlice(key string) []time.Time
 	// Secret prompts the user for a password.
 	Secret(question string, option ...SecretOption) (string, error)
 	// Spinner creates a new spinner instance.
 	Spinner(message string, option SpinnerOption) error
 	// Success writes a success message to the console.
 	Success(message string)
+	// Table renders a formatted table to the console.
+	Table(headers []string, rows [][]string, option ...TableOption)
 	// Warning writes a warning message to the console.
 	Warning(message string)
 	// WithProgressBar executes a callback with a progress bar.
 	WithProgressBar(items []any, callback func(any) error) ([]any, error)
 	// TwoColumnDetail writes a two column detail to the console.
 	TwoColumnDetail(first, second string, filler ...rune)
+	// Divider shows a terminal-width divider filled with given sting
+	Divider(filler ...string)
+	// Green writes green text to console
+	Green(message string)
+	// Greenln writes green line to console
+	Greenln(message string)
+	// Red writes red text to console
+	Red(message string)
+	// Redln writes red line to console
+	Redln(message string)
+	// Yellow writes yellow text to console
+	Yellow(message string)
+	// Yellowln writes yellow line to console
+	Yellowln(message string)
+	// Black writes black text to console
+	Black(message string)
+	// Blackln writes black line to console
+	Blackln(message string)
 }
 
 type Progress interface {
@@ -92,75 +175,75 @@ type Progress interface {
 type Choice struct {
 	// Key the choice key.
 	Key string
-	// Selected determines if the choice is selected.
-	Selected bool
 	// Value the choice value.
 	Value string
+	// Selected determines if the choice is selected.
+	Selected bool
 }
 
 type AskOption struct {
+	// Validate the input validation function.
+	Validate func(string) error
 	// Default the default value for the input.
 	Default string
 	// Description the input description.
 	Description string
+	// Placeholder the input placeholder.
+	Placeholder string
+	// Prompt the prompt message.(use for single line input)
+	Prompt string
 	// Lines the number of lines for the input.(use for multiple lines text)
 	Lines int
 	// Limit the character limit for the input.
 	Limit int
 	// Multiple determines if input is single line or multiple lines text
 	Multiple bool
-	// Placeholder the input placeholder.
-	Placeholder string
-	// Prompt the prompt message.(use for single line input)
-	Prompt string
-	// Validate the input validation function.
-	Validate func(string) error
 }
 
 type ChoiceOption struct {
+	// Validate the input validation function.
+	Validate func(string) error
 	// Default the default value for the input.
 	Default string
 	// Description the input description.
 	Description string
-	// Validate the input validation function.
-	Validate func(string) error
 }
 
 type ConfirmOption struct {
 	// Affirmative label for the affirmative button.
 	Affirmative string
-	// Default the default value for the input.
-	Default bool
 	// Description the input description.
 	Description string
 	// Negative label for the negative button.
 	Negative string
+	// Default the default value for the input.
+	Default bool
 }
 
 type SecretOption struct {
+	// Validate the input validation function.
+	Validate func(string) error
 	// Default the default value for the input.
 	Default string
 	// Description the input description.
 	Description string
-	// Limit the character limit for the input.
-	Limit int
 	// Placeholder the input placeholder.
 	Placeholder string
-	// Validate the input validation function.
-	Validate func(string) error
+	// Limit the character limit for the input.
+	Limit int
 }
 
 type MultiSelectOption struct {
-	// Default the default value for the input.
-	Default []string
-	// Description the input description.
-	Description string
-	// Filterable determines if the choices can be filtered.
-	Filterable bool
-	// Limit the number of choices that can be selected.
-	Limit int
 	// Validate the input validation function.
 	Validate func([]string) error
+	// Description the input description.
+	Description string
+	// Default the default value for the input.
+	Default []string
+	// Limit the number of choices that can be selected.
+	Limit int
+	// Filterable determines if the choices can be filtered.
+	Filterable bool
 }
 
 type SpinnerOption struct {
@@ -168,4 +251,36 @@ type SpinnerOption struct {
 	Ctx context.Context
 	// Action the action to execute.
 	Action func() error
+}
+
+type TableOption struct {
+	// BorderTop enables/disables the very top horizontal line.
+	BorderTop *bool
+	// BorderBottom enables/disables the very bottom horizontal line.
+	BorderBottom *bool
+	// BorderLeft enables/disables the leftmost vertical line.
+	BorderLeft *bool
+	// BorderRight enables/disables the rightmost vertical line.
+	BorderRight *bool
+	// BorderHeader enables/disables the separator line between the header and the first row.
+	BorderHeader *bool
+	// BorderColumn enables/disables vertical lines between columns.
+	BorderColumn *bool
+	// BorderRow enables/disables horizontal lines between every data row.
+	BorderRow *bool
+
+	// Border allows setting a custom lipgloss.Border (e.g., lipgloss.DoubleBorder()).
+	Border lipgloss.Border
+	// BorderStyle sets the color and style for the grid lines.
+	BorderStyle lipgloss.Style
+	// ColumnStyles allows specific styling for individual columns (key is column index).
+	// Useful for right-aligning numbers: map[int]lipgloss.Style{1: lipgloss.NewStyle().Align(lipgloss.Right)}
+	ColumnStyles map[int]lipgloss.Style
+	// StyleFunc is an escape hatch for advanced cell-by-cell styling based on content or position.
+	StyleFunc table.StyleFunc
+
+	// Width sets a fixed total width for the table. Columns will auto-scale to fit.
+	Width int
+	// Height sets a fixed total height for the table.
+	Height int
 }

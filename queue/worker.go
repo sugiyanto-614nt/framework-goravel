@@ -5,8 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/RichardKnop/machinery/v2"
-
+	"github.com/goravel/framework/contracts/cache"
 	"github.com/goravel/framework/contracts/database/db"
 	"github.com/goravel/framework/contracts/foundation"
 	"github.com/goravel/framework/contracts/log"
@@ -27,21 +26,23 @@ type Worker struct {
 	json   foundation.Json
 	log    log.Log
 
-	connection string
-	queue      string
-	concurrent int
-	debug      bool
-
-	currentDelay  time.Duration
 	failedJobChan chan models.FailedJob
-	isShutdown    atomic.Bool
-	maxDelay      time.Duration
-	machinery     *machinery.Worker
-	wg            sync.WaitGroup
+
+	connection  string
+	queue       string
+	jobWg       sync.WaitGroup
+	failedJobWg sync.WaitGroup
+	concurrent  int
+	tries       int
+
+	currentDelay time.Duration
+	maxDelay     time.Duration
+	isShutdown   atomic.Bool
+	debug        bool
 }
 
-func NewWorker(config queue.Config, db db.DB, job queue.JobStorer, json foundation.Json, log log.Log, connection, queue string, concurrent int) (*Worker, error) {
-	driverCreator := NewDriverCreator(config, db, job, json, log)
+func NewWorker(config queue.Config, cache cache.Cache, db db.DB, job queue.JobStorer, json foundation.Json, log log.Log, connection, queue string, concurrent, tries int) (*Worker, error) {
+	driverCreator := NewDriverCreator(config, cache, db, job, json, log)
 	driver, err := driverCreator.Create(connection)
 	if err != nil {
 		return nil, err
@@ -58,6 +59,7 @@ func NewWorker(config queue.Config, db db.DB, job queue.JobStorer, json foundati
 		connection: connection,
 		queue:      queue,
 		concurrent: concurrent,
+		tries:      tries,
 		debug:      config.Debug(),
 
 		currentDelay:  1 * time.Second,
@@ -74,55 +76,59 @@ func (r *Worker) Run() error {
 
 	r.isShutdown.Store(false)
 
-	if r.driver.Driver() == queue.DriverMachinery {
-		return r.RunMachinery()
-	}
-
 	return r.run()
-}
-
-// RunMachinery will be removed in v1.17
-func (r *Worker) RunMachinery() error {
-	instance := NewMachinery(r.config, r.log, r.connection)
-
-	var (
-		worker *machinery.Worker
-		err    error
-	)
-
-	worker, err = instance.Run(r.job.All(), r.queue, r.concurrent)
-	if err != nil {
-		return err
-	}
-
-	r.machinery = worker
-
-	return nil
 }
 
 func (r *Worker) Shutdown() error {
 	r.isShutdown.Store(true)
+
+	// Wait for all worker goroutines to finish processing current tasks
+	r.jobWg.Wait()
+
+	// Close the failed job channel to allow the failed job processor goroutine to exit
 	close(r.failedJobChan)
 
-	if r.machinery != nil {
-		r.machinery.Quit()
-	}
+	// Wait for the failed job processor goroutine to finish
+	r.failedJobWg.Wait()
 
 	return nil
 }
 
 func (r *Worker) call(task queue.Task) error {
+	tries := 1
 	r.printRunningLog(task)
 
-	if !task.Delay.IsZero() {
-		time.Sleep(carbon.FromStdTime(task.Delay).DiffAbsInDuration())
-	}
+	for {
+		if !task.Delay.IsZero() {
+			time.Sleep(carbon.FromStdTime(task.Delay).DiffAbsInDuration())
+		}
 
-	now := carbon.Now()
-	err := r.job.Call(task.Job.Signature(), utils.ConvertArgs(task.Args))
-	duration := now.DiffAbsInDuration().String()
+		now := carbon.Now()
+		err := r.job.Call(task.Job.Signature(), utils.ConvertArgs(task.Args))
+		duration := now.DiffAbsInDuration().String()
 
-	if err != nil {
+		if err == nil {
+			r.printSuccessLog(task, duration)
+			return nil
+		}
+
+		shouldRetry := false
+		var delay time.Duration = 0
+
+		if jobWithShouldRetry, ok := task.Job.(queue.JobWithShouldRetry); ok {
+			shouldRetry, delay = jobWithShouldRetry.ShouldRetry(err, tries)
+		} else {
+			shouldRetry = tries < r.tries /* || r.tries == 0 */ // Currently, we do not support unlimited retries, see https://github.com/goravel/framework/pull/1123#discussion_r2194272829
+		}
+
+		if shouldRetry {
+			if delay > 0 {
+				time.Sleep(delay)
+			}
+			tries++
+			continue
+		}
+
 		payload, jsonErr := utils.TaskToJson(task, r.json)
 		if jsonErr != nil {
 			return errors.QueueFailedToConvertTaskToJson.Args(jsonErr, task)
@@ -141,10 +147,6 @@ func (r *Worker) call(task queue.Task) error {
 
 		return errors.QueueFailedToCallJob
 	}
-
-	r.printSuccessLog(task, duration)
-
-	return nil
 }
 
 func (r *Worker) logFailedJob(job models.FailedJob) {
@@ -168,7 +170,7 @@ func (r *Worker) printRunningLog(task queue.Task) {
 		return
 	}
 
-	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeString())
+	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeMilliString())
 	status := "<fg=yellow;op=bold>RUNNING</>"
 	first := datetime + " " + task.Job.Signature()
 	second := status
@@ -181,7 +183,7 @@ func (r *Worker) printSuccessLog(task queue.Task, duration string) {
 		return
 	}
 
-	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeString())
+	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeMilliString())
 	status := "<fg=green;op=bold>DONE</>"
 	duration = color.Gray().Sprint(duration)
 	first := datetime + " " + task.Job.Signature()
@@ -195,7 +197,7 @@ func (r *Worker) printFailedLog(task queue.Task, duration string) {
 		return
 	}
 
-	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeString())
+	datetime := color.Gray().Sprint(carbon.Now().ToDateTimeMilliString())
 	status := "<fg=red;op=bold>FAIL</>"
 	duration = color.Gray().Sprint(duration)
 	first := datetime + " " + task.Job.Signature()
@@ -206,13 +208,13 @@ func (r *Worker) printFailedLog(task queue.Task, duration string) {
 
 func (r *Worker) run() error {
 	if r.debug {
-		color.Infoln(errors.QueueProcessingJobs.Args(r.connection, r.queue))
+		color.Infoln(errors.QueueProcessingJobs.Args(r.connection, r.queue).Error())
 	}
 
 	for i := 0; i < r.concurrent; i++ {
-		r.wg.Add(1)
+		r.jobWg.Add(1)
 		go func() {
-			defer r.wg.Done()
+			defer r.jobWg.Done()
 			for {
 				if r.isShutdown.Load() {
 					return
@@ -273,16 +275,15 @@ func (r *Worker) run() error {
 		}()
 	}
 
-	r.wg.Add(1)
-
+	r.failedJobWg.Add(1)
 	go func() {
-		defer r.wg.Done()
+		defer r.failedJobWg.Done()
 		for job := range r.failedJobChan {
 			r.logFailedJob(job)
 		}
 	}()
 
-	r.wg.Wait()
+	r.jobWg.Wait()
 
 	return nil
 }

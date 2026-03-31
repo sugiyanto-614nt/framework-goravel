@@ -18,6 +18,8 @@ type ContextRequest interface {
 	Headers() http.Header
 	// Method retrieves the HTTP request method (e.g., GET, POST, PUT).
 	Method() string
+	// Name retrieves the name of the route for the request.
+	Name() string
 	// OriginPath retrieves the original path of the request: /users/{id}
 	OriginPath() string
 	// Path retrieves the current path information for the request: /users/1
@@ -26,6 +28,8 @@ type ContextRequest interface {
 	Url() string
 	// FullUrl retrieves the full URL, including the query string, for the request.
 	FullUrl() string
+	// Info retrieves the route information for the request.
+	Info() Info
 	// Ip retrieves the client's IP address.
 	Ip() string
 	// Host retrieves the host name.
@@ -91,7 +95,7 @@ type ContextRequest interface {
 	Origin() *http.Request
 
 	// Validate performs request data validation using specified rules and options.
-	Validate(rules map[string]string, options ...validation.Option) (validation.Validator, error)
+	Validate(rules map[string]any, options ...validation.Option) (validation.Validator, error)
 	// ValidateRequest validates the request data against a pre-defined FormRequest structure
 	// and returns validation errors, if any.
 	ValidateRequest(request FormRequest) (validation.Errors, error)
@@ -101,12 +105,12 @@ type FormRequest interface {
 	// Authorize determine if the user is authorized to make this request.
 	Authorize(ctx Context) error
 	// Rules get the validation rules that apply to the request.
-	Rules(ctx Context) map[string]string
+	Rules(ctx Context) map[string]any
 }
 
 type FormRequestWithFilters interface {
 	// Filters get the custom filters that apply to the request.
-	Filters(ctx Context) map[string]string
+	Filters(ctx Context) map[string]any
 }
 
 type FormRequestWithMessages interface {
@@ -122,4 +126,11 @@ type FormRequestWithAttributes interface {
 type FormRequestWithPrepareForValidation interface {
 	// PrepareForValidation prepare the data for validation.
 	PrepareForValidation(ctx Context, data validation.Data) error
+}
+
+type Info struct {
+	Handler string `json:"handler"`
+	Method  string `json:"method"`
+	Name    string `json:"name"`
+	Path    string `json:"path"`
 }

@@ -1,22 +1,31 @@
 package console
 
 import (
+	"strings"
+	"time"
+	"unicode/utf8"
+
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
+	"github.com/pterm/pterm"
+	"github.com/spf13/cast"
 	"github.com/urfave/cli/v3"
 
 	"github.com/goravel/framework/contracts/console"
+	"github.com/goravel/framework/contracts/console/command"
 	"github.com/goravel/framework/support/color"
 	supportconsole "github.com/goravel/framework/support/console"
 )
 
 type CliContext struct {
-	instance *cli.Command
+	arguments []command.Argument
+	instance  *cli.Command
 }
 
-func NewCliContext(instance *cli.Command) *CliContext {
-	return &CliContext{instance}
+func NewCliContext(instance *cli.Command, arguments []command.Argument) *CliContext {
+	return &CliContext{arguments, instance}
 }
 
 func (r *CliContext) Ask(question string, option ...console.AskOption) (string, error) {
@@ -37,7 +46,7 @@ func (r *CliContext) Ask(question string, option ...console.AskOption) (string, 
 			}
 		}
 
-		err := input.Value(&answer).Run()
+		err := input.Value(&answer).WithTheme(GlobalHuhTheme).Run()
 		if err != nil {
 			return "", err
 		}
@@ -51,7 +60,7 @@ func (r *CliContext) Ask(question string, option ...console.AskOption) (string, 
 			}
 		}
 
-		err := input.Value(&answer).Run()
+		err := input.Value(&answer).WithTheme(GlobalHuhTheme).Run()
 		if err != nil {
 			return "", err
 		}
@@ -92,7 +101,7 @@ func (r *CliContext) Choice(question string, choices []console.Choice, option ..
 		}
 	}
 
-	err := huh.NewForm(huh.NewGroup(input.Value(&answer))).Run()
+	err := huh.NewForm(huh.NewGroup(input.Value(&answer))).WithTheme(GlobalHuhTheme).Run()
 	if err != nil {
 		return "", err
 	}
@@ -119,7 +128,7 @@ func (r *CliContext) Confirm(question string, option ...console.ConfirmOption) b
 		answer = option[0].Default
 	}
 
-	if err := input.Value(&answer).Run(); err != nil {
+	if err := input.Value(&answer).WithTheme(GlobalHuhTheme).Run(); err != nil {
 		r.Error(err.Error())
 
 		return false
@@ -134,6 +143,10 @@ func (r *CliContext) Error(message string) {
 
 func (r *CliContext) Info(message string) {
 	color.Infoln(message)
+}
+
+func (r *CliContext) Instance() *cli.Command {
+	return r.instance
 }
 
 func (r *CliContext) Line(message string) {
@@ -160,7 +173,7 @@ func (r *CliContext) MultiSelect(question string, choices []console.Choice, opti
 		}
 	}
 
-	err := huh.NewForm(huh.NewGroup(input.Value(&answer))).Run()
+	err := huh.NewForm(huh.NewGroup(input.Value(&answer))).WithTheme(GlobalHuhTheme).Run()
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +227,294 @@ func (r *CliContext) OptionInt64Slice(key string) []int64 {
 	return r.instance.Int64Slice(key)
 }
 
+func (r *CliContext) ArgumentString(key string) string {
+	value := r.instance.StringArgs(key)
+	if len(value) > 0 {
+		return value[0]
+	}
+
+	return cast.ToString(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentStringSlice(key string) []string {
+	value := r.instance.StringArgs(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	return cast.ToStringSlice(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentFloat32(key string) float32 {
+	ret := r.instance.Float32Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToFloat32(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentFloat32Slice(key string) []float32 {
+	value := r.instance.Float32Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]float32); ok {
+		return v
+	}
+	return nil
+}
+
+func (r *CliContext) ArgumentFloat64(key string) float64 {
+	ret := r.instance.Float64Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToFloat64(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentFloat64Slice(key string) []float64 {
+	value := r.instance.Float64Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	return cast.ToFloat64Slice(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentInt(key string) int {
+	ret := r.instance.IntArgs(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToInt(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentIntSlice(key string) []int {
+	value := r.instance.IntArgs(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	return cast.ToIntSlice(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentInt8(key string) int8 {
+	ret := r.instance.Int8Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToInt8(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentInt8Slice(key string) []int8 {
+	value := r.instance.Int8Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]int8); ok {
+		return v
+	}
+	return nil
+}
+
+func (r *CliContext) ArgumentInt16(key string) int16 {
+	ret := r.instance.Int16Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToInt16(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentInt16Slice(key string) []int16 {
+	value := r.instance.Int16Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]int16); ok {
+		return v
+	}
+	return nil
+}
+
+func (r *CliContext) ArgumentInt32(key string) int32 {
+	ret := r.instance.Int32Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToInt32(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentInt32Slice(key string) []int32 {
+	value := r.instance.Int32Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]int32); ok {
+		return v
+	}
+	return nil
+}
+
+func (r *CliContext) ArgumentInt64(key string) int64 {
+	ret := r.instance.Int64Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToInt64(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentInt64Slice(key string) []int64 {
+	value := r.instance.Int64Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	return cast.ToInt64Slice(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentUint(key string) uint {
+	ret := r.instance.UintArgs(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToUint(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentUintSlice(key string) []uint {
+	value := r.instance.UintArgs(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	return cast.ToUintSlice(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentUint8(key string) uint8 {
+	ret := r.instance.Uint8Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToUint8(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentUint8Slice(key string) []uint8 {
+	value := r.instance.Uint8Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]uint8); ok {
+		return v
+	}
+	return nil
+}
+
+func (r *CliContext) ArgumentUint16(key string) uint16 {
+	ret := r.instance.Uint16Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToUint16(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentUint16Slice(key string) []uint16 {
+	value := r.instance.Uint16Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]uint16); ok {
+		return v
+	}
+	return nil
+}
+
+func (r *CliContext) ArgumentUint32(key string) uint32 {
+	ret := r.instance.Uint32Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToUint32(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentUint32Slice(key string) []uint32 {
+	value := r.instance.Uint32Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]uint32); ok {
+		return v
+	}
+	return nil
+}
+
+func (r *CliContext) ArgumentUint64(key string) uint64 {
+	ret := r.instance.Uint64Args(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToUint64(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentUint64Slice(key string) []uint64 {
+	value := r.instance.Uint64Args(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]uint64); ok {
+		return v
+	}
+	return nil
+}
+
+func (r *CliContext) ArgumentTimestamp(key string) time.Time {
+	ret := r.instance.TimestampArgs(key)
+	if len(ret) > 0 {
+		return ret[0]
+	}
+
+	return cast.ToTime(r.getDefaultArgumentValue(key))
+}
+
+func (r *CliContext) ArgumentTimestampSlice(key string) []time.Time {
+	value := r.instance.TimestampArgs(key)
+	if len(value) > 0 {
+		return value
+	}
+
+	defaultValue := r.getDefaultArgumentValue(key)
+	if v, ok := defaultValue.([]time.Time); ok {
+		return v
+	}
+	return nil
+}
+
 func (r *CliContext) Secret(question string, option ...console.SecretOption) (string, error) {
 	var answer string
 	if len(option) > 0 {
@@ -229,7 +530,7 @@ func (r *CliContext) Secret(question string, option ...console.SecretOption) (st
 		}
 	}
 
-	err := input.Value(&answer).Run()
+	err := input.Value(&answer).WithTheme(GlobalHuhTheme).Run()
 	if err != nil {
 		return "", err
 	}
@@ -238,14 +539,15 @@ func (r *CliContext) Secret(question string, option ...console.SecretOption) (st
 }
 
 func (r *CliContext) Spinner(message string, option console.SpinnerOption) error {
-	style := lipgloss.NewStyle().Foreground(lipgloss.CompleteColor{TrueColor: "#3D8C8D", ANSI256: "30", ANSI: "6"})
-	spin := spinner.New().Title(message).Style(style).TitleStyle(style)
+	spin := spinner.New().
+		Title(message).
+		Style(DefaultSpinnerStyle).
+		TitleStyle(DefaultSpinnerTitleStyle)
 
 	var err error
-	spin.Context(option.Ctx).Action(func() {
+	if err := spin.Context(option.Ctx).Action(func() {
 		err = option.Action()
-	})
-	if err := spin.Run(); err != nil {
+	}).Run(); err != nil {
 		return err
 	}
 
@@ -254,6 +556,102 @@ func (r *CliContext) Spinner(message string, option console.SpinnerOption) error
 
 func (r *CliContext) Success(message string) {
 	color.Successln(message)
+}
+
+func (r *CliContext) Table(headers []string, rows [][]string, option ...console.TableOption) {
+	t := table.New().Headers(headers...).Rows(rows...)
+
+	opt := DefaultTableOption
+	if len(option) > 0 {
+		userOpt := option[0]
+		if (userOpt.Border != lipgloss.Border{}) {
+			opt.Border = userOpt.Border
+		}
+		if userOpt.BorderStyle.Value() != "" {
+			opt.BorderStyle = userOpt.BorderStyle
+		}
+		if userOpt.StyleFunc != nil {
+			opt.StyleFunc = userOpt.StyleFunc
+		}
+		if userOpt.BorderTop != nil {
+			opt.BorderTop = userOpt.BorderTop
+		}
+		if userOpt.BorderBottom != nil {
+			opt.BorderBottom = userOpt.BorderBottom
+		}
+		if userOpt.BorderLeft != nil {
+			opt.BorderLeft = userOpt.BorderLeft
+		}
+		if userOpt.BorderRight != nil {
+			opt.BorderRight = userOpt.BorderRight
+		}
+		if userOpt.BorderHeader != nil {
+			opt.BorderHeader = userOpt.BorderHeader
+		}
+		if userOpt.BorderColumn != nil {
+			opt.BorderColumn = userOpt.BorderColumn
+		}
+		if userOpt.BorderRow != nil {
+			opt.BorderRow = userOpt.BorderRow
+		}
+		if userOpt.Width > 0 {
+			opt.Width = userOpt.Width
+		}
+		if userOpt.Height > 0 {
+			opt.Height = userOpt.Height
+		}
+		if userOpt.ColumnStyles != nil {
+			opt.ColumnStyles = userOpt.ColumnStyles
+		}
+	}
+
+	t.Border(opt.Border).BorderStyle(opt.BorderStyle)
+
+	if opt.BorderTop != nil {
+		t.BorderTop(*opt.BorderTop)
+	}
+	if opt.BorderBottom != nil {
+		t.BorderBottom(*opt.BorderBottom)
+	}
+	if opt.BorderLeft != nil {
+		t.BorderLeft(*opt.BorderLeft)
+	}
+	if opt.BorderRight != nil {
+		t.BorderRight(*opt.BorderRight)
+	}
+	if opt.BorderHeader != nil {
+		t.BorderHeader(*opt.BorderHeader)
+	}
+	if opt.BorderColumn != nil {
+		t.BorderColumn(*opt.BorderColumn)
+	}
+	if opt.BorderRow != nil {
+		t.BorderRow(*opt.BorderRow)
+	}
+
+	if opt.Width > 0 {
+		t.Width(opt.Width)
+	}
+	if opt.Height > 0 {
+		t.Height(opt.Height)
+	}
+
+	if opt.StyleFunc == nil {
+		opt.StyleFunc = DefaultTableStyleFunc
+	}
+	t.StyleFunc(func(row, col int) lipgloss.Style {
+		style := opt.StyleFunc(row, col)
+
+		if opt.ColumnStyles != nil {
+			if colStyle, ok := opt.ColumnStyles[col]; ok {
+				style = style.Inherit(colStyle)
+			}
+		}
+
+		return style
+	})
+
+	r.Line(t.Render())
 }
 
 func (r *CliContext) Warning(message string) {
@@ -285,4 +683,68 @@ func (r *CliContext) WithProgressBar(items []any, callback func(any) error) ([]a
 
 func (r *CliContext) TwoColumnDetail(first, second string, filler ...rune) {
 	r.Line(supportconsole.TwoColumnDetail(first, second, filler...))
+}
+
+func (r *CliContext) Divider(filler ...string) {
+	var str string
+	if len(filler) == 0 || len(filler[0]) == 0 {
+		str = "-"
+	} else {
+		str = filler[0]
+	}
+
+	width := pterm.GetTerminalWidth()
+	strLen := utf8.RuneCountInString(str)
+
+	repeat, remainder := width/strLen, width%strLen
+
+	message := strings.Repeat(str, repeat)
+
+	if remainder > 0 {
+		message += string([]rune(str)[:remainder])
+	}
+
+	r.Line(message)
+}
+
+func (r *CliContext) Green(message string) {
+	color.Green().Print(message)
+}
+
+func (r *CliContext) Greenln(message string) {
+	color.Green().Println(message)
+}
+
+func (r *CliContext) Red(message string) {
+	color.Red().Print(message)
+}
+
+func (r *CliContext) Redln(message string) {
+	color.Red().Println(message)
+}
+
+func (r *CliContext) Yellow(message string) {
+	color.Yellow().Print(message)
+}
+
+func (r *CliContext) Yellowln(message string) {
+	color.Yellow().Println(message)
+}
+
+func (r *CliContext) Black(message string) {
+	color.Black().Print(message)
+}
+
+func (r *CliContext) Blackln(message string) {
+	color.Black().Println(message)
+}
+
+func (r *CliContext) getDefaultArgumentValue(key string) any {
+	for _, arg := range r.arguments {
+		if arg.GetName() == key && arg.GetValue() != nil {
+			return arg.GetValue()
+		}
+	}
+
+	return nil
 }

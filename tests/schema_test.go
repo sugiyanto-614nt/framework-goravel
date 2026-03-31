@@ -2504,6 +2504,30 @@ func (s *SchemaSuite) TestTimestampMethods() {
 				table.DropSoftDeletesTz("delete_at")
 			}))
 			s.False(schema.HasColumns(table, []string{"created_at", "updated_at", "delete_at"}))
+
+		})
+	}
+}
+
+func (s *SchemaSuite) TestDateTimesMethod() {
+	for driver, testQuery := range s.driverToTestQuery {
+		s.Run(driver, func() {
+			schema := newSchema(testQuery, s.driverToTestQuery)
+			table := "datetimes"
+
+			s.NoError(schema.Create(table, func(table contractsschema.Blueprint) {
+				table.DateTimes(3)
+			}))
+
+			s.True(schema.HasColumns(table, []string{"created_at", "updated_at"}))
+
+			datetimeColumns, err := schema.GetColumns(table)
+			s.NoError(err)
+			for _, column := range datetimeColumns {
+				if column.Name == "created_at" || column.Name == "updated_at" {
+					s.True(column.Nullable)
+				}
+			}
 		})
 	}
 }
@@ -2574,10 +2598,10 @@ func (s *SchemaSuite) createTableAndAssertColumnsForColumnMethods(schema contrac
 		table.BigInteger("big_integer").Comment("This is a big_integer column")
 		table.Boolean("boolean_default").Default(true).Comment("This is a boolean column with default value")
 		table.Char("char").Comment("This is a char column")
-		if schema.GetConnection() != postgres.Name {
-			table.Column("custom_type", "geometry").Comment("This is a custom type column")
-		} else {
+		if strings.Contains(schema.GetConnection(), postgres.Name) {
 			table.Column("custom_type", "macaddr").Comment("This is a custom type column")
+		} else {
+			table.Column("custom_type", "geometry").Comment("This is a custom type column")
 		}
 		table.Date("date").Comment("This is a date column")
 		table.DateTime("date_time", 3).Comment("This is a date time column")

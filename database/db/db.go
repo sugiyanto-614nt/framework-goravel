@@ -15,7 +15,6 @@ import (
 	contractslogger "github.com/goravel/framework/contracts/database/logger"
 	"github.com/goravel/framework/contracts/log"
 	databasedriver "github.com/goravel/framework/database/driver"
-	databaselogger "github.com/goravel/framework/database/logger"
 	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support/carbon"
 )
@@ -54,12 +53,11 @@ func BuildDB(ctx context.Context, config config.Config, log log.Log, connection 
 	}
 
 	pool := driver.Pool()
-	gorm, err := databasedriver.BuildGorm(config, log, pool)
+	logger := NewLogger(config, log)
+	gorm, err := databasedriver.BuildGorm(config, logger.ToGorm(), pool, connection)
 	if err != nil {
 		return nil, err
 	}
-
-	logger := databaselogger.NewLogger(config, log)
 
 	return NewDB(ctx, config, driver, logger, gorm)
 }
@@ -92,14 +90,22 @@ func (r *DB) Connection(name string) contractsdb.DB {
 	return r.queries[name]
 }
 
-func (r *DB) Transaction(callback func(tx contractsdb.Tx) error) error {
+func (r *DB) Transaction(callback func(tx contractsdb.Tx) error) (err error) {
 	tx, err := r.BeginTransaction()
 	if err != nil {
 		return err
 	}
 
-	err = callback(tx)
-	if err != nil {
+	defer func() {
+		if re := recover(); re != nil {
+			err = fmt.Errorf("panic: %v", re)
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				err = errors.Join(err, rollbackErr)
+			}
+		}
+	}()
+
+	if err = callback(tx); err != nil {
 		if err := tx.Rollback(); err != nil {
 			return err
 		}
@@ -121,12 +127,12 @@ func (r *DB) WithContext(ctx context.Context) contractsdb.DB {
 
 type Tx struct {
 	ctx        context.Context
-	driverName string
-	gormDB     *gorm.DB
 	grammar    contractsdriver.Grammar
 	logger     contractslogger.Logger
 	txBuilder  contractsdb.TxBuilder
+	gormDB     *gorm.DB
 	txLogs     *[]TxLog
+	driverName string
 }
 
 func NewTx(

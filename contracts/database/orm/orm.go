@@ -45,6 +45,8 @@ type Query interface {
 	BeginTransaction() (Query, error)
 	// Commit commits the changes in a transaction.
 	Commit() error
+	// Context gets the context used by the query.
+	Context() context.Context
 	// Count retrieve the "count" result of the query.
 	Count() (int64, error)
 	// Create inserts new record into the database.
@@ -56,7 +58,7 @@ type Query interface {
 	// Delete deletes records matching given conditions, if the conditions are empty will delete all records.
 	Delete(value ...any) (*db.Result, error)
 	// Distinct specifies distinct fields to query.
-	Distinct(args ...any) Query
+	Distinct(columns ...string) Query
 	// Driver gets the driver for the query.
 	Driver() string
 	// Exec executes raw sql
@@ -126,6 +128,16 @@ type Query interface {
 	OrWhereBetween(column string, x, y any) Query
 	// OrWhereIn adds an "or where column in" clause to the query.
 	OrWhereIn(column string, values []any) Query
+	// OrWhereJsonContains adds an "or where JSON contains" clause to the query.
+	OrWhereJsonContains(column string, value any) Query
+	// OrWhereJsonContainsKey add a clause that determines if a JSON path exists to the query.
+	OrWhereJsonContainsKey(column string) Query
+	// OrWhereJsonDoesntContain add an "or where JSON not contains" clause to the query.
+	OrWhereJsonDoesntContain(column string, value any) Query
+	// OrWhereJsonDoesntContainKey add a clause that determines if a JSON path does not exist to the query.
+	OrWhereJsonDoesntContainKey(column string) Query
+	// OrWhereJsonLength add an "or where JSON length" clause to the query.
+	OrWhereJsonLength(column string, length int) Query
 	// OrWhereNotBetween adds an "or where column not between x and y" clause to the query.
 	OrWhereNotBetween(column string, x, y any) Query
 	// OrWhereNotIn adds an "or where column not in" clause to the query.
@@ -151,11 +163,19 @@ type Query interface {
 	// Scopes applies one or more query scopes.
 	Scopes(funcs ...func(Query) Query) Query
 	// Select specifies fields that should be retrieved from the database.
-	Select(query any, args ...any) Query
+	Select(columns ...string) Query
+	// SelectRaw specifies a raw SQL query for selecting fields.
+	SelectRaw(query any, args ...any) Query
 	// SharedLock locks the selected rows in the table.
 	SharedLock() Query
 	// Sum calculates the sum of a column's values and populates the destination object.
 	Sum(column string, dest any) error
+	// Avg calculates the average of a column's values.
+	Avg(column string, dest any) error
+	// Min calculates the minimum value of a column.
+	Min(column string, dest any) error
+	// Max calculates the maximum value of a column.
+	Max(column string, dest any) error
 	// Table specifies the table for the query.
 	Table(name string, args ...any) Query
 	// ToSql returns the query as a SQL string.
@@ -169,10 +189,26 @@ type Query interface {
 	UpdateOrCreate(dest any, attributes any, values any) error
 	// Where add a "where" clause to the query.
 	Where(query any, args ...any) Query
+	// WhereAll adds a "where all columns match" clause to the query.
+	WhereAll(columns []string, args ...any) Query
+	// WhereAny adds a "where any of columns match" clause to the query.
+	WhereAny(columns []string, args ...any) Query
 	// WhereBetween adds a "where column between x and y" clause to the query.
 	WhereBetween(column string, x, y any) Query
 	// WhereIn adds a "where column in" clause to the query.
 	WhereIn(column string, values []any) Query
+	// WhereJsonContains add a "where JSON contains" clause to the query.
+	WhereJsonContains(column string, value any) Query
+	// WhereJsonContainsKey add a clause that determines if a JSON path exists to the query.
+	WhereJsonContainsKey(column string) Query
+	// WhereJsonDoesntContain add a "where JSON not contains" clause to the query.
+	WhereJsonDoesntContain(column string, value any) Query
+	// WhereJsonDoesntContainKey add a clause that determines if a JSON path does not exist to the query.
+	WhereJsonDoesntContainKey(column string) Query
+	// WhereJsonLength add a "where JSON length" clause to the query.
+	WhereJsonLength(column string, length int) Query
+	// WhereNone adds a "where none of columns match" clause to the query.
+	WhereNone(columns []string, args ...any) Query
 	// WhereNotBetween adds a "where column not between x and y" clause to the query.
 	WhereNotBetween(column string, x, y any) Query
 	// WhereNotIn adds a "where column not in" clause to the query.
@@ -183,6 +219,8 @@ type Query interface {
 	WhereNull(column string) Query
 	// WithoutEvents disables event firing for the query.
 	WithoutEvents() Query
+	// WithoutGlobalScopes disables all global scopes for the query.
+	WithoutGlobalScopes(names ...string) Query
 	// WithTrashed allows soft deleted models to be included in the results.
 	WithTrashed() Query
 	// With returns a new query instance with the given relationships eager loaded.
@@ -212,9 +250,13 @@ type Association interface {
 	Count() int64
 }
 
-type ConnectionModel interface {
+type ModelWithConnection interface {
 	// Connection gets the connection name for the model.
 	Connection() string
+}
+
+type ModelWithGlobalScopes interface {
+	GlobalScopes() map[string]func(Query) Query
 }
 
 type ToSql interface {

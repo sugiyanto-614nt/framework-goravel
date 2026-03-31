@@ -3,13 +3,16 @@ package orm
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"sync"
 
-	"github.com/goravel/framework/contracts"
+	"github.com/goravel/framework/contracts/binding"
 	"github.com/goravel/framework/contracts/config"
 	"github.com/goravel/framework/contracts/database"
 	contractsorm "github.com/goravel/framework/contracts/database/orm"
 	"github.com/goravel/framework/contracts/log"
+	"github.com/goravel/framework/database/driver"
 	"github.com/goravel/framework/database/factory"
 	"github.com/goravel/framework/database/gorm"
 )
@@ -17,14 +20,14 @@ import (
 type Orm struct {
 	ctx             context.Context
 	config          config.Config
-	connection      string
-	dbConfig        database.Config
 	log             log.Log
-	modelToObserver []contractsorm.ModelToObserver
-	mutex           sync.Mutex
 	query           contractsorm.Query
 	queries         map[string]contractsorm.Query
 	fresh           func(key ...any)
+	connection      string
+	modelToObserver []contractsorm.ModelToObserver
+	dbConfig        database.Config
+	mutex           sync.Mutex
 }
 
 func NewOrm(
@@ -138,15 +141,27 @@ func (r *Orm) SetQuery(query contractsorm.Query) {
 	r.query = query
 }
 
+// TODO: The fresh logic needs to be optimized, it's a bit unclear now.
+// https://github.com/goravel/goravel/issues/848
 func (r *Orm) Fresh() {
-	r.fresh(contracts.BindingOrm)
+	r.fresh(binding.Orm)
+	driver.ResetConnections()
 }
 
-func (r *Orm) Transaction(txFunc func(tx contractsorm.Query) error) error {
+func (r *Orm) Transaction(txFunc func(tx contractsorm.Query) error) (err error) {
 	tx, err := r.Query().Begin()
 	if err != nil {
 		return err
 	}
+
+	defer func() {
+		if re := recover(); re != nil {
+			err = fmt.Errorf("panic: %v", re)
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				err = errors.Join(err, rollbackErr)
+			}
+		}
+	}()
 
 	if err := txFunc(tx); err != nil {
 		if err := tx.Rollback(); err != nil {

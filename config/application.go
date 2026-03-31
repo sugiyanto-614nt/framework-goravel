@@ -4,6 +4,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 
@@ -36,7 +37,7 @@ func NewApplication(envFilePath string) *Application {
 	}
 
 	appKey := app.Env("APP_KEY")
-	if !support.DontVerifyEnvFileExists {
+	if !support.DontVerifyAppKey {
 		if appKey == nil {
 			color.Errorln("Please initialize APP_KEY first.")
 			color.Default().Println("Create a .env file and run command: go run . artisan key:generate")
@@ -62,6 +63,25 @@ func (app *Application) Env(envName string, defaultValue ...any) any {
 	}
 
 	return value
+}
+
+// EnvString get string value from env with optional default.
+func (app *Application) EnvString(envName string, defaultValue ...string) string {
+	value := app.Env(envName)
+	if cast.ToString(value) == "" {
+		return convert.Default(defaultValue...)
+	}
+	return cast.ToString(value)
+}
+
+// EnvBool get bool value from env with optional default.
+func (app *Application) EnvBool(envName string, defaultValue ...bool) bool {
+	value := app.Env(envName)
+	// If no value and a default provided, return default
+	if cast.ToString(value) == "" && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return cast.ToBool(value)
 }
 
 // Add config to application.
@@ -107,4 +127,11 @@ func (app *Application) GetDuration(path string, defaultValue ...time.Duration) 
 		return convert.Default(defaultValue...)
 	}
 	return app.vip.GetDuration(path)
+}
+
+// UnmarshalKey unmarshal a specific key from config into a struct.
+func (app *Application) UnmarshalKey(key string, rawVal any) error {
+	return app.vip.UnmarshalKey(key, rawVal, func(c *mapstructure.DecoderConfig) {
+		c.TagName = "json"
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	databasesql "database/sql"
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -14,21 +15,24 @@ import (
 	"github.com/goravel/framework/contracts/database/db"
 	contractsdriver "github.com/goravel/framework/contracts/database/driver"
 	"github.com/goravel/framework/contracts/database/logger"
+	"github.com/goravel/framework/database/utils"
 	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support/carbon"
+	"github.com/goravel/framework/support/collect"
 	"github.com/goravel/framework/support/convert"
+	"github.com/goravel/framework/support/deep"
 	"github.com/goravel/framework/support/str"
 )
 
 type Query struct {
-	conditions   contractsdriver.Conditions
 	ctx          context.Context
 	err          error
 	grammar      contractsdriver.Grammar
 	logger       logger.Logger
 	readBuilder  db.CommonBuilder
-	txLogs       *[]TxLog
 	writeBuilder db.CommonBuilder
+	txLogs       *[]TxLog
+	conditions   contractsdriver.Conditions
 }
 
 func NewQuery(ctx context.Context, readBuilder db.CommonBuilder, writeBuilder db.CommonBuilder, grammar contractsdriver.Grammar, logger logger.Logger, table string, txLogs *[]TxLog) *Query {
@@ -78,7 +82,9 @@ func (r *Query) Chunk(size uint64, callback func(rows []db.Row) error) error {
 }
 
 func (r *Query) Count() (int64, error) {
-	r.conditions.Selects = []string{"COUNT(*)"}
+	if err := buildSelectForCount(r); err != nil {
+		return 0, err
+	}
 
 	sql, args, err := r.buildSelect()
 	if err != nil {
@@ -101,7 +107,7 @@ func (r *Query) Count() (int64, error) {
 
 func (r *Query) CrossJoin(query string, args ...any) db.Query {
 	q := r.clone()
-	q.conditions.CrossJoin = append(q.conditions.CrossJoin, contractsdriver.Join{
+	q.conditions.CrossJoin = deep.Append(q.conditions.CrossJoin, contractsdriver.Join{
 		Query: query,
 		Args:  args,
 	})
@@ -140,7 +146,7 @@ func (r *Query) Cursor() chan db.Row {
 		if rows, err = r.readBuilder.QueryxContext(r.ctx, sql, args...); err != nil {
 			return
 		}
-		defer rows.Close()
+		defer errors.Ignore(rows.Close)
 
 		for rows.Next() {
 			row := make(map[string]any)
@@ -200,11 +206,18 @@ func (r *Query) Delete() (*db.Result, error) {
 	}, nil
 }
 
-func (r *Query) Distinct() db.Query {
-	q := r.clone()
-	q.conditions.Distinct = convert.Pointer(true)
+func (r *Query) Distinct(columns ...string) db.Query {
+	var query *Query
 
-	return q
+	if len(columns) > 0 {
+		query = r.Select(columns...).(*Query)
+	} else {
+		query = r.clone()
+	}
+
+	query.conditions.Distinct = convert.Pointer(true)
+
+	return query
 }
 
 func (r *Query) DoesntExist() (bool, error) {
@@ -380,7 +393,7 @@ func (r *Query) Having(query any, args ...any) db.Query {
 
 func (r *Query) Join(query string, args ...any) db.Query {
 	q := r.clone()
-	q.conditions.Join = append(q.conditions.Join, contractsdriver.Join{
+	q.conditions.Join = deep.Append(q.conditions.Join, contractsdriver.Join{
 		Query: query,
 		Args:  args,
 	})
@@ -486,7 +499,7 @@ func (r *Query) Latest(column ...string) db.Query {
 
 func (r *Query) LeftJoin(query string, args ...any) db.Query {
 	q := r.clone()
-	q.conditions.LeftJoin = append(q.conditions.LeftJoin, contractsdriver.Join{
+	q.conditions.LeftJoin = deep.Append(q.conditions.LeftJoin, contractsdriver.Join{
 		Query: query,
 		Args:  args,
 	})
@@ -515,36 +528,38 @@ func (r *Query) Offset(offset uint64) db.Query {
 	return q
 }
 
-func (r *Query) OrderBy(column string) db.Query {
+func (r *Query) OrderBy(column string, directions ...string) db.Query {
+	direction := "ASC"
+	if len(directions) > 0 {
+		direction = directions[0]
+	}
+
 	q := r.clone()
-	q.conditions.OrderBy = append(q.conditions.OrderBy, column+" ASC")
+	q.conditions.OrderBy = deep.Append(q.conditions.OrderBy, column+" "+direction)
 
 	return q
 }
 
 func (r *Query) OrderByDesc(column string) db.Query {
 	q := r.clone()
-	q.conditions.OrderBy = append(q.conditions.OrderBy, column+" DESC")
+	q.conditions.OrderBy = deep.Append(q.conditions.OrderBy, column+" DESC")
 
 	return q
 }
 
 func (r *Query) OrderByRaw(raw string) db.Query {
 	q := r.clone()
-	q.conditions.OrderBy = append(q.conditions.OrderBy, raw)
+	q.conditions.OrderBy = deep.Append(q.conditions.OrderBy, raw)
 
 	return q
 }
 
 func (r *Query) OrWhere(query any, args ...any) db.Query {
-	q := r.clone()
-	q.conditions.Where = append(q.conditions.Where, contractsdriver.Where{
+	return r.addWhere(contractsdriver.Where{
 		Query: query,
 		Args:  args,
 		Or:    true,
 	})
-
-	return q
 }
 
 func (r *Query) OrWhereBetween(column string, x, y any) db.Query {
@@ -566,6 +581,51 @@ func (r *Query) OrWhereColumn(column1 string, column2 ...string) db.Query {
 
 func (r *Query) OrWhereIn(column string, values []any) db.Query {
 	return r.OrWhere(column, values)
+}
+
+func (r *Query) OrWhereJsonContains(column string, value any) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonContains,
+		Query: column,
+		Args:  []any{value},
+		Or:    true,
+	})
+}
+
+func (r *Query) OrWhereJsonContainsKey(column string) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonContainsKey,
+		Query: column,
+		Or:    true,
+	})
+}
+
+func (r *Query) OrWhereJsonDoesntContain(column string, value any) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonContains,
+		Query: column,
+		Args:  []any{value},
+		IsNot: true,
+		Or:    true,
+	})
+}
+
+func (r *Query) OrWhereJsonDoesntContainKey(column string) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonContainsKey,
+		Query: column,
+		IsNot: true,
+		Or:    true,
+	})
+}
+
+func (r *Query) OrWhereJsonLength(column string, length int) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonLength,
+		Query: column,
+		Args:  []any{length},
+		Or:    true,
+	})
 }
 
 func (r *Query) OrWhereLike(column string, value string) db.Query {
@@ -643,7 +703,7 @@ func (r *Query) Pluck(column string, dest any) error {
 
 func (r *Query) RightJoin(query string, args ...any) db.Query {
 	q := r.clone()
-	q.conditions.RightJoin = append(q.conditions.RightJoin, contractsdriver.Join{
+	q.conditions.RightJoin = deep.Append(q.conditions.RightJoin, contractsdriver.Join{
 		Query: query,
 		Args:  args,
 	})
@@ -653,7 +713,15 @@ func (r *Query) RightJoin(query string, args ...any) db.Query {
 
 func (r *Query) Select(columns ...string) db.Query {
 	q := r.clone()
-	q.conditions.Selects = append(q.conditions.Selects, columns...)
+	q.conditions.Selects = deep.Append(q.conditions.Selects, columns...)
+	q.conditions.Selects = collect.Unique(q.conditions.Selects)
+
+	// * may be added along with other columns, remove it.
+	if len(q.conditions.Selects) > 1 {
+		q.conditions.Selects = collect.Filter(q.conditions.Selects, func(column string, _ int) bool {
+			return column != "*"
+		})
+	}
 
 	return q
 }
@@ -665,14 +733,40 @@ func (r *Query) SharedLock() db.Query {
 	return q
 }
 
-func (r *Query) Sum(column string) (int64, error) {
-	var sum int64
-	err := r.Select(fmt.Sprintf("SUM(%s)", column)).First(&sum)
-	if err != nil {
-		return 0, err
+func (r *Query) Sum(column string, dest any) error {
+	destValue := reflect.ValueOf(dest)
+	if destValue.Kind() != reflect.Ptr {
+		return errors.DatabaseUnsupportedType.Args(destValue.Kind(), "pointer")
 	}
 
-	return sum, nil
+	return r.Select(fmt.Sprintf("SUM(%s)", column)).First(dest)
+}
+
+func (r *Query) Avg(column string, dest any) error {
+	destValue := reflect.ValueOf(dest)
+	if destValue.Kind() != reflect.Ptr {
+		return errors.DatabaseUnsupportedType.Args(destValue.Kind(), "pointer")
+	}
+
+	return r.Select(fmt.Sprintf("AVG(%s)", column)).First(dest)
+}
+
+func (r *Query) Min(column string, dest any) error {
+	destValue := reflect.ValueOf(dest)
+	if destValue.Kind() != reflect.Ptr {
+		return errors.DatabaseUnsupportedType.Args(destValue.Kind(), "pointer")
+	}
+
+	return r.Select(fmt.Sprintf("MIN(%s)", column)).First(dest)
+}
+
+func (r *Query) Max(column string, dest any) error {
+	destValue := reflect.ValueOf(dest)
+	if destValue.Kind() != reflect.Ptr {
+		return errors.DatabaseUnsupportedType.Args(destValue.Kind(), "pointer")
+	}
+
+	return r.Select(fmt.Sprintf("MAX(%s)", column)).First(dest)
 }
 
 func (r *Query) ToSql() db.ToSql {
@@ -745,9 +839,7 @@ func (r *Query) UpdateOrInsert(attributes any, values any) (*db.Result, error) {
 		return r.Where(mapAttributes).Update(values)
 	}
 
-	for k, v := range mapValues {
-		mapAttributes[k] = v
-	}
+	maps.Copy(mapAttributes, mapValues)
 
 	return r.Insert(mapAttributes)
 }
@@ -769,13 +861,53 @@ func (r *Query) When(condition bool, callback func(query db.Query) db.Query, fal
 }
 
 func (r *Query) Where(query any, args ...any) db.Query {
-	q := r.clone()
-	q.conditions.Where = append(q.conditions.Where, contractsdriver.Where{
+	return r.addWhere(contractsdriver.Where{
 		Query: query,
 		Args:  args,
 	})
+}
 
-	return q
+func (r *Query) WhereAll(columns []string, args ...any) db.Query {
+	op, value, err := utils.PrepareWhereOperatorAndValue(args...)
+	if err != nil {
+		r.err = err
+		return r
+	}
+
+	var conditions []string
+	var conditionArgs []any
+	for _, column := range columns {
+		conditions = append(conditions, fmt.Sprintf("%s %v ?", column, op))
+		conditionArgs = append(conditionArgs, value)
+	}
+
+	query := strings.Join(conditions, " AND ")
+	where := contractsdriver.Where{
+		Query: sq.Expr(query, conditionArgs...),
+	}
+	r.conditions.Where = deep.Append(r.conditions.Where, where)
+
+	return r
+}
+
+func (r *Query) WhereAny(columns []string, args ...any) db.Query {
+	op, value, err := utils.PrepareWhereOperatorAndValue(args...)
+	if err != nil {
+		r.err = err
+		return r
+	}
+
+	var orConditions []sq.Sqlizer
+	for _, column := range columns {
+		orConditions = append(orConditions, sq.Expr(fmt.Sprintf("%s %v ?", column, op), value))
+	}
+
+	where := contractsdriver.Where{
+		Query: sq.Or(orConditions),
+	}
+	r.conditions.Where = deep.Append(r.conditions.Where, where)
+
+	return r
 }
 
 func (r *Query) WhereBetween(column string, x, y any) db.Query {
@@ -812,8 +944,75 @@ func (r *Query) WhereIn(column string, values []any) db.Query {
 	return r.Where(column, values)
 }
 
+func (r *Query) WhereJsonContains(column string, value any) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonContains,
+		Query: column,
+		Args:  []any{value},
+	})
+}
+
+func (r *Query) WhereJsonContainsKey(column string) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonContainsKey,
+		Query: column,
+	})
+}
+
+func (r *Query) WhereJsonDoesntContain(column string, value any) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonContains,
+		Query: column,
+		Args:  []any{value},
+		IsNot: true,
+	})
+}
+
+func (r *Query) WhereJsonDoesntContainKey(column string) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonContainsKey,
+		Query: column,
+		IsNot: true,
+	})
+}
+
+func (r *Query) WhereJsonLength(column string, length int) db.Query {
+	return r.addWhere(contractsdriver.Where{
+		Type:  contractsdriver.WhereTypeJsonLength,
+		Query: column,
+		Args:  []any{length},
+	})
+}
+
 func (r *Query) WhereLike(column string, value string) db.Query {
 	return r.Where(sq.Like{column: value})
+}
+
+func (r *Query) WhereNone(columns []string, args ...any) db.Query {
+	op, value, err := utils.PrepareWhereOperatorAndValue(args...)
+	if err != nil {
+		r.err = err
+		return r
+	}
+
+	var conditions []string
+	var conditionArgs []any
+	for _, column := range columns {
+		if op == "=" {
+			conditions = append(conditions, fmt.Sprintf("%s <> ?", column))
+		} else {
+			conditions = append(conditions, fmt.Sprintf("NOT (%s %v ?)", column, op))
+		}
+		conditionArgs = append(conditionArgs, value)
+	}
+
+	query := strings.Join(conditions, " AND ")
+	where := contractsdriver.Where{
+		Query: sq.Expr(query, conditionArgs...),
+	}
+	r.conditions.Where = deep.Append(r.conditions.Where, where)
+
+	return r
 }
 
 func (r *Query) WhereNot(query any, args ...any) db.Query {
@@ -865,6 +1064,13 @@ func (r *Query) WhereRaw(raw string, args []any) db.Query {
 	return r.Where(sq.Expr(raw, args...))
 }
 
+func (r *Query) addWhere(where contractsdriver.Where) db.Query {
+	q := r.clone()
+	q.conditions.Where = deep.Append(q.conditions.Where, where)
+
+	return q
+}
+
 func (r *Query) buildDelete() (sql string, args []any, err error) {
 	if r.err != nil {
 		return "", nil, r.err
@@ -901,16 +1107,23 @@ func (r *Query) buildInsert(data []map[string]any) (sql string, args []any, err 
 		builder = builder.PlaceholderFormat(placeholderFormat)
 	}
 
-	first := data[0]
-	cols := make([]string, 0, len(first))
-	for col := range first {
+	// Collect all unique columns from all maps to avoid missing columns
+	colSet := make(map[string]bool)
+	for _, row := range data {
+		for col := range row {
+			colSet[col] = true
+		}
+	}
+
+	cols := make([]string, 0, len(colSet))
+	for col := range colSet {
 		cols = append(cols, col)
 	}
 	sort.Strings(cols)
 	builder = builder.Columns(cols...)
 
 	for _, row := range data {
-		vals := make([]any, 0, len(first))
+		vals := make([]any, 0, len(cols))
 		for _, col := range cols {
 			vals = append(vals, row[col])
 		}
@@ -1037,19 +1250,49 @@ func (r *Query) buildUpdate(data map[string]any) (sql string, args []any, err er
 		return "", nil, err
 	}
 
+	if data, err = r.grammar.CompileJsonColumnsUpdate(data); err != nil {
+		return "", nil, errors.OrmJsonColumnUpdateInvalid.Args(err)
+	}
+
 	return builder.Where(sqlizer).SetMap(data).ToSql()
 }
 
 func (r *Query) buildWhere(where contractsdriver.Where) (any, []any, error) {
 	switch query := where.Query.(type) {
 	case string:
-		if !str.Of(query).Trim().Contains(" ", "?") {
+		switch where.Type {
+		case contractsdriver.WhereTypeJsonContains:
+			var err error
+			query, where.Args, err = r.grammar.CompileJsonContains(query, where.Args[0], where.IsNot)
+			if err != nil {
+				return nil, nil, errors.OrmJsonContainsInvalidBinding.Args(err)
+			}
+		case contractsdriver.WhereTypeJsonContainsKey:
+			query = str.Of(r.grammar.CompileJsonContainsKey(query, where.IsNot)).Replace("?", "??").String()
+		case contractsdriver.WhereTypeJsonLength:
+			segments := strings.SplitN(query, " ", 2)
+			segments[0] = r.grammar.CompileJsonLength(segments[0])
+			query = strings.Join(segments, " ")
+		default:
+			if str.Of(query).Trim().Contains("->") {
+				segments := strings.Split(query, " ")
+				for i := range segments {
+					if strings.Contains(segments[i], "->") {
+						segments[i] = r.grammar.CompileJsonSelector(segments[i])
+					}
+				}
+				query = strings.Join(segments, " ")
+				where.Args = r.grammar.CompileJsonValues(where.Args...)
+			}
+		}
+		if !str.Of(query).Trim().Contains("?") {
 			if len(where.Args) > 1 {
 				return sq.Eq{query: where.Args}, nil, nil
 			} else if len(where.Args) == 1 {
 				return sq.Eq{query: where.Args[0]}, nil, nil
 			}
 		}
+
 		return query, where.Args, nil
 	case map[string]any:
 		return sq.Eq(query), nil, nil
@@ -1166,4 +1409,36 @@ func (r *Query) trace(builder db.CommonBuilder, sql string, args []any, now *car
 	} else {
 		r.logger.Trace(r.ctx, now, builder.Explain(sql, args...), rowsAffected, err)
 	}
+}
+
+func buildSelectForCount(query *Query) error {
+	distinct := query.conditions.Distinct != nil && *query.conditions.Distinct
+
+	// If selectColumns only contains a raw select with spaces (rename), gorm will fail, but this case will appear when calling Paginate, so use COUNT(*) here.
+	// If there are multiple selectColumns, gorm will transform them into *, so no need to handle that case.
+	// For example: Select("name as n").Count() will fail, but Select("name", "age as a").Count() will be treated as Select("*").Count()
+	if len(query.conditions.Selects) > 1 {
+		query.conditions.Selects = []string{"COUNT(*)"}
+	} else if len(query.conditions.Selects) == 1 {
+		column := query.conditions.Selects[0]
+		if str.Of(query.conditions.Selects[0]).Trim().Contains(" ") {
+			column = str.Of(query.conditions.Selects[0]).Split(" ")[0]
+		}
+
+		if distinct {
+			query.conditions.Selects = []string{fmt.Sprintf("COUNT(DISTINCT %s)", column)}
+		} else {
+			query.conditions.Selects = []string{fmt.Sprintf("COUNT(%s)", column)}
+		}
+	} else {
+		if distinct {
+			return errors.DatabaseCountDistinctWithoutColumns
+		} else {
+			query.conditions.Selects = []string{"COUNT(*)"}
+		}
+	}
+
+	query.conditions.Distinct = nil
+
+	return nil
 }

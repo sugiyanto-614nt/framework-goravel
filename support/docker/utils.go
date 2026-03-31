@@ -2,26 +2,29 @@ package docker
 
 import (
 	"fmt"
+	"math/rand"
+	"net"
 	"strings"
 
-	"github.com/spf13/cast"
-
 	"github.com/goravel/framework/contracts/testing/docker"
-	"github.com/goravel/framework/support/process"
+	"github.com/goravel/framework/errors"
 )
 
-func ExposedPort(exposedPorts []string, port int) int {
+func ExposedPort(exposedPorts []string, port string) string {
 	for _, exposedPort := range exposedPorts {
-		if !strings.Contains(exposedPort, cast.ToString(port)) {
+		splitExposedPort := strings.Split(exposedPort, ":")
+		if len(splitExposedPort) != 2 {
 			continue
 		}
 
-		ports := strings.Split(exposedPort, ":")
+		if splitExposedPort[1] != port && !strings.Contains(splitExposedPort[1], port+"/") {
+			continue
+		}
 
-		return cast.ToInt(ports[0])
+		return splitExposedPort[0]
 	}
 
-	return 0
+	return ""
 }
 
 func ImageToCommand(image *docker.Image) (command string, exposedPorts []string) {
@@ -35,11 +38,12 @@ func ImageToCommand(image *docker.Image) (command string, exposedPorts []string)
 			commands = append(commands, "-e", env)
 		}
 	}
+
 	var ports []string
 	if len(image.ExposedPorts) > 0 {
 		for _, port := range image.ExposedPorts {
 			if !strings.Contains(port, ":") {
-				port = fmt.Sprintf("%d:%s", process.ValidPort(), port)
+				port = fmt.Sprintf("%d:%s", ValidPort(), port)
 			}
 			ports = append(ports, port)
 			commands = append(commands, "-p", port)
@@ -52,5 +56,36 @@ func ImageToCommand(image *docker.Image) (command string, exposedPorts []string)
 		commands = append(commands, image.Args...)
 	}
 
+	if len(image.Cmd) > 0 {
+		commands = append(commands, image.Cmd...)
+	}
+
 	return strings.Join(commands, " "), ports
+}
+
+// Used by TestContainer, to simulate the port is using.
+var TestPortUsing = false
+
+func IsPortUsing(port int) bool {
+	if TestPortUsing {
+		return true
+	}
+
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if l != nil {
+		errors.Ignore(l.Close)
+	}
+
+	return err != nil
+}
+
+func ValidPort() int {
+	for range 60 {
+		random := rand.Intn(10000) + 10000
+		if !IsPortUsing(random) {
+			return random
+		}
+	}
+
+	return 0
 }

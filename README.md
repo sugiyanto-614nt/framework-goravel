@@ -16,13 +16,11 @@ English | [中文](./README_zh.md)
 
 ## About Goravel
 
-Goravel is a web application framework with complete functions and good scalability. As a starting scaffolding to help
-Gopher quickly build their own applications.
+Goravel is a full-featured, scalable web application framework that provides a starting scaffold to help Gophers quickly build their applications.
 
-The framework style is consistent with [Laravel](https://github.com/laravel/laravel), let Phper don't need to learn a
-new framework, but also happy to play around Golang! Tribute Laravel!
+The framework style is consistent with [Laravel](https://laravel.com/), so PHP developers don’t need to learn a new framework and can still enjoy playing around with Golang, in tribute to Laravel!
 
-Welcome to star, PR and issues！
+We welcome stars, PRs, and issues!
 
 ## Documentation
 
@@ -33,15 +31,44 @@ Example [https://github.com/goravel/example](https://github.com/goravel/example)
 > To optimize the documentation, please submit a PR to the documentation
 > repository [https://github.com/goravel/docs](https://github.com/goravel/docs)
 
-## Main Function
+## Main Features
 
-|                                                                                        |                                                                 |                                                                          |                                                                       |                                                                                |
-|----------------------------------------------------------------------------------------|-----------------------------------------------------------------|--------------------------------------------------------------------------|-----------------------------------------------------------------------|--------------------------------------------------------------------------------|
-| [Config](https://www.goravel.dev/getting-started/configuration.html)                   | [Http](https://www.goravel.dev/the-basics/routing.html)         | [Authentication](https://www.goravel.dev/security/authentication.html)   | [Authorization](https://www.goravel.dev/security/authorization.html)  | [Orm](https://www.goravel.dev/orm/getting-started.html)                        |
-| [Migrate](https://www.goravel.dev/orm/migrations.html)                                 | [Logger](https://www.goravel.dev/the-basics/logging.html)       | [Cache](https://www.goravel.dev/digging-deeper/cache.html)               | [Grpc](https://www.goravel.dev/the-basics/grpc.html)                  | [Artisan Console](https://www.goravel.dev/digging-deeper/artisan-console.html) |
-| [Task Scheduling](https://www.goravel.dev/digging-deeper/task-scheduling.html)         | [Queue](https://www.goravel.dev/digging-deeper/queues.html)     | [Event](https://www.goravel.dev/digging-deeper/event.html)               | [FileStorage](https://www.goravel.dev/digging-deeper/filesystem.html) | [Mail](https://www.goravel.dev/digging-deeper/mail.html)                       |
-| [Validation](https://www.goravel.dev/the-basics/validation.html)                       | [Mock](https://www.goravel.dev/testing/mock.html)               | [Hash](https://www.goravel.dev/security/hashing.html)                    | [Crypt](https://www.goravel.dev/security/encryption.html)             | [Carbon](https://www.goravel.dev/digging-deeper/helpers.html)                  |
-| [Package Development](https://www.goravel.dev/digging-deeper/package-development.html) | [Testing](https://www.goravel.dev/testing/getting-started.html) | [Localization](https://www.goravel.dev/digging-deeper/localization.html) | [Session](https://www.goravel.dev/the-basics/session.html)            |                                                                                |
+| Module Name | Description |
+|-------------|-------------|
+| [Artisan Console](https://www.goravel.dev/digging-deeper/artisan-console.html) | CLI command-line interface for application management and automation |
+| [Authentication](https://www.goravel.dev/security/authentication.html) | User identity verification with JWT and Session drivers |
+| [Authorization](https://www.goravel.dev/security/authorization.html) | Permission-based access control using policies and gates |
+| [Cache](https://www.goravel.dev/digging-deeper/cache.html) | Store and retrieve data using memory, Redis, or custom drivers |
+| [Carbon](https://www.goravel.dev/digging-deeper/helpers.html) | Helper functions for date and time manipulation |
+| [Config](https://www.goravel.dev/getting-started/configuration.html) | Application configuration management from files and environment |
+| [Crypt](https://www.goravel.dev/security/encryption.html) | Secure data encryption and decryption utilities |
+| [DB](https://www.goravel.dev/database/getting-started.html) | Database query builder |
+| [Event](https://www.goravel.dev/digging-deeper/event.html) | Application event dispatching and listening system |
+| [Factory](https://www.goravel.dev/orm/factories.html) | Generate fake model data for testing purposes |
+| [FileStorage](https://www.goravel.dev/digging-deeper/filesystem.html) | File upload, download, and storage across multiple drivers |
+| [Grpc](https://www.goravel.dev/the-basics/grpc.html) | High-performance gRPC server and client implementation |
+| [Hash](https://www.goravel.dev/security/hashing.html) | Secure password hashing |
+| [Http](https://www.goravel.dev/the-basics/routing.html) | HTTP routing, controllers, and middleware management |
+| [Http Client](https://www.goravel.dev/digging-deeper/http-client.html) | Make HTTP requests to external APIs and services |
+| [Localization](https://www.goravel.dev/digging-deeper/localization.html) | Multi-language translation and locale management |
+| [Logger](https://www.goravel.dev/the-basics/logging.html) | Application logging to files, console, or external services |
+| [Mail](https://www.goravel.dev/digging-deeper/mail.html) | Send emails via SMTP or queue-based delivery |
+| [Mock](https://www.goravel.dev/testing/mock.html) | Create test mocks for facades and dependencies |
+| [Migrate](https://www.goravel.dev/database/migrations.html) | Version control for database schema changes |
+| [Orm](https://www.goravel.dev/orm/getting-started.html) | Elegant Orm implementation for database operations |
+| [Package Development](https://www.goravel.dev/digging-deeper/package-development.html) | Build reusable packages to extend framework functionality |
+| [Process](https://www.goravel.dev/digging-deeper/process.html) | An expressive and elegant API around Go's standard os/exec package |
+| [Queue](https://www.goravel.dev/digging-deeper/queues.html) | Defer time-consuming tasks to background job processing |
+| [Seeder](https://www.goravel.dev/database/seeding.html) | Populate database tables with test or initial data |
+| [Session](https://www.goravel.dev/the-basics/session.html) | Manage user session data across HTTP requests |
+| [Task Scheduling](https://www.goravel.dev/digging-deeper/task-scheduling.html) | Schedule recurring tasks using cron-like expressions |
+| [Testing](https://www.goravel.dev/testing/getting-started.html) | HTTP testing, mocking, and assertion utilities |
+| [Validation](https://www.goravel.dev/the-basics/validation.html) | Validate incoming request data using rules |
+| [View](https://www.goravel.dev/the-basics/views.html) | Template rendering engine for HTML responses |
+
+## Compare With Laravel
+
+[For Detail](https://www.goravel.dev/prologue/compare-with-laravel.html)
 
 ## Roadmap
 
@@ -49,16 +76,16 @@ Example [https://github.com/goravel/example](https://github.com/goravel/example)
 
 ## Excellent Extend Packages
 
-[For Detail](https://www.goravel.dev/prologue/packages.html)
+[For Detail](https://www.goravel.dev/getting-started/packages.html)
 
 ## Contributors
 
-This project exists thanks to all the people who contribute, to participate in the contribution, please see [Contribution Guide](https://www.goravel.dev/prologue/contributions.html).
+This project exists thanks to all the people who contribute, to participate in the contribution, please see [Contribution Guide](https://www.goravel.dev/getting-started/contributions.html).
 
 <a href="https://github.com/hwbrzzl" target="_blank"><img src="https://avatars.githubusercontent.com/u/24771476?v=4" width="48" height="48"></a>
 <a href="https://github.com/DevHaoZi" target="_blank"><img src="https://avatars.githubusercontent.com/u/115467771?v=4" width="48" height="48"></a>
 <a href="https://github.com/kkumar-gcc" target="_blank"><img src="https://avatars.githubusercontent.com/u/84431594?v=4" width="48" height="48"></a>
-<a href="https://github.com/almas1992" target="_blank"><img src="https://avatars.githubusercontent.com/u/9382335?v=4" width="48" height="48"></a>
+<a href="https://github.com/almas-x" target="_blank"><img src="https://avatars.githubusercontent.com/u/9382335?v=4" width="48" height="48"></a>
 <a href="https://github.com/merouanekhalili" target="_blank"><img src="https://avatars.githubusercontent.com/u/1122628?v=4" width="48" height="48"></a>
 <a href="https://github.com/hongyukeji" target="_blank"><img src="https://avatars.githubusercontent.com/u/23145983?v=4" width="48" height="48"></a>
 <a href="https://github.com/sidshrivastav" target="_blank"><img src="https://avatars.githubusercontent.com/u/28773690?v=4" width="48" height="48"></a>
@@ -86,6 +113,14 @@ This project exists thanks to all the people who contribute, to participate in t
 <a href="https://github.com/vendion" target="_blank"><img src="https://avatars.githubusercontent.com/u/145018?v=4" width="48" height="48"></a>
 <a href="https://github.com/tzsk" target="_blank"><img src="https://avatars.githubusercontent.com/u/13273787?v=4" width="48" height="48"></a>
 <a href="https://github.com/ycb1986" target="_blank"><img src="https://avatars.githubusercontent.com/u/12908032?v=4" width="48" height="48"></a>
+<a href="https://github.com/BadJacky" target="_blank"><img src="https://avatars.githubusercontent.com/u/113529280?v=4" width="48" height="48"></a>
+<a href="https://github.com/NiteshSingh17" target="_blank"><img src="https://avatars.githubusercontent.com/u/79739154?v=4" width="48" height="48"></a>
+<a href="https://github.com/alfanzain" target="_blank"><img src="https://avatars.githubusercontent.com/u/4216529?v=4" width="48" height="48"></a>
+<a href="https://github.com/oprudkyi" target="_blank"><img src="https://avatars.githubusercontent.com/u/3018472?v=4" width="48" height="48"></a>
+<a href="https://github.com/zoryamba" target="_blank"><img src="https://avatars.githubusercontent.com/u/21248500?v=4" width="48" height="48"></a>
+<a href="https://github.com/oguzhankrcb" target="_blank"><img src="https://avatars.githubusercontent.com/u/7572058?v=4" width="48" height="48"></a>
+<a href="https://github.com/ChisThanh" target="_blank"><img src="https://avatars.githubusercontent.com/u/93512710?v=4" width="48" height="48"></a>
+<a href="https://github.com/wyicwx" target="_blank"><img src="https://avatars.githubusercontent.com/u/1241187?v=4" width="48" height="48"></a>
 
 ## Sponsor
 

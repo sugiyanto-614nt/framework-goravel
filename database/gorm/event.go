@@ -2,6 +2,7 @@ package gorm
 
 import (
 	"context"
+	"maps"
 	"reflect"
 	"strings"
 
@@ -29,7 +30,7 @@ func NewEvent(query *Query, model, dest any) *Event {
 }
 
 func (e *Event) Context() context.Context {
-	return e.query.ctx
+	return e.query.Context()
 }
 
 func (e *Event) GetAttribute(key string) any {
@@ -65,7 +66,7 @@ func (e *Event) IsDirty(columns ...string) bool {
 
 	if len(columns) == 0 {
 		for destColumn, destValue := range destOfMap {
-			if !(e.validColumn(destColumn) && e.validValue(destColumn, destValue)) {
+			if !e.validColumn(destColumn) || !e.validValue(destColumn, destValue) {
 				continue
 			}
 			if e.dirty(destColumn, destValue) {
@@ -78,7 +79,7 @@ func (e *Event) IsDirty(columns ...string) bool {
 				continue
 			}
 			for destColumn, destValue := range destOfMap {
-				if !(e.validColumn(destColumn) && e.validValue(destColumn, destValue)) {
+				if !e.validColumn(destColumn) || !e.validValue(destColumn, destValue) {
 					continue
 				}
 				if e.equalColumnName(column, destColumn) && e.dirty(destColumn, destValue) {
@@ -296,6 +297,9 @@ func fetchColumnNames(model any) map[string]string {
 		modelType = modelType.Elem()
 		modelValue = modelValue.Elem()
 	}
+	if modelType.Kind() != reflect.Struct {
+		return res
+	}
 
 	for i := 0; i < modelType.NumField(); i++ {
 		if !modelType.Field(i).IsExported() {
@@ -305,9 +309,7 @@ func fetchColumnNames(model any) map[string]string {
 		fieldValue := modelValue.Field(i)
 		if fieldValue.Kind() == reflect.Struct && fieldType.Anonymous {
 			subStructMap := fetchColumnNames(fieldValue.Interface())
-			for key, value := range subStructMap {
-				res[key] = value
-			}
+			maps.Copy(res, subStructMap)
 			continue
 		}
 
@@ -351,9 +353,7 @@ func structToMap(data any) map[string]any {
 
 		if (fieldValue.Kind() == reflect.Struct || fieldValue.Kind() == reflect.Pointer) && fieldType.Anonymous {
 			subStructMap := structToMap(fieldValue.Interface())
-			for key, value := range subStructMap {
-				res[key] = value
-			}
+			maps.Copy(res, subStructMap)
 		} else {
 			res[dbColumn] = fieldValue.Interface()
 		}

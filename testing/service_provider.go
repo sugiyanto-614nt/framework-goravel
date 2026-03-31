@@ -1,7 +1,7 @@
 package testing
 
 import (
-	"github.com/goravel/framework/contracts"
+	"github.com/goravel/framework/contracts/binding"
 	contractsconsole "github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/foundation"
 	contractsroute "github.com/goravel/framework/contracts/route"
@@ -20,16 +20,37 @@ var (
 type ServiceProvider struct {
 }
 
+func (r *ServiceProvider) Relationship() binding.Relationship {
+	return binding.Relationship{
+		Bindings: []string{
+			binding.Testing,
+		},
+		Dependencies: binding.Bindings[binding.Testing].Dependencies,
+		ProvideFor:   []string{},
+	}
+}
+
 func (r *ServiceProvider) Register(app foundation.Application) {
-	app.Singleton(contracts.BindingTesting, func(app foundation.Application) (any, error) {
-		return NewApplication(app), nil
+	app.Singleton(binding.Testing, func(app foundation.Application) (any, error) {
+		config := app.MakeConfig()
+		if config == nil {
+			return nil, errors.ConfigFacadeNotSet.SetModule(errors.ModuleTesting)
+		}
+
+		// They are checked when using actually
+		artisan := app.MakeArtisan()
+		cache := app.MakeCache()
+		orm := app.MakeOrm()
+		process := app.MakeProcess()
+
+		return NewApplication(artisan, cache, config, orm, process), nil
 	})
 }
 
 func (r *ServiceProvider) Boot(app foundation.Application) {
 	artisanFacade = app.MakeArtisan()
 	if artisanFacade == nil {
-		color.Errorln(errors.ArtisanFacadeNotSet.SetModule(errors.ModuleTesting))
+		color.Errorln(errors.ConsoleFacadeNotSet.SetModule(errors.ModuleTesting))
 	}
 
 	routeFacade = app.MakeRoute()

@@ -1,11 +1,11 @@
 package console
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
+	"github.com/goravel/framework/support"
 	supportconsole "github.com/goravel/framework/support/console"
 	"github.com/goravel/framework/support/file"
 )
@@ -39,13 +39,13 @@ func (r *MiddlewareMakeCommand) Extend() command.Extend {
 
 // Handle Execute the console command.
 func (r *MiddlewareMakeCommand) Handle(ctx console.Context) error {
-	m, err := supportconsole.NewMake(ctx, "middleware", ctx.Argument(0), filepath.Join("app", "http", "middleware"))
+	make, err := supportconsole.NewMake(ctx, "middleware", ctx.Argument(0), support.Config.Paths.Middleware)
 	if err != nil {
 		ctx.Error(err.Error())
 		return nil
 	}
 
-	if err := file.PutContent(m.GetFilePath(), r.populateStub(r.getStub(), m.GetPackageName(), m.GetStructName())); err != nil {
+	if err := file.PutContent(make.GetFilePath(), r.populateStub(r.getStub(), make.GetPackageName(), make.GetStructName())); err != nil {
 		ctx.Error(err.Error())
 		return nil
 	}

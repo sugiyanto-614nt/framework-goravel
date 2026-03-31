@@ -89,6 +89,19 @@ func (s *PendingJobTestSuite) TestDispatchSync() {
 }
 
 func (s *PendingJobTestSuite) TestNewPendingChainJob() {
+	s.Run("without jobs", func() {
+		pendingChainJob := NewPendingChainJob(
+			nil, // config
+			nil, // cache
+			nil, // db
+			nil, // jobStorer
+			nil, // json
+			nil, // jobs
+			nil, // log
+		)
+		s.Nil(pendingChainJob)
+	})
+
 	jobs := []contractsqueue.ChainJob{
 		{
 			Job: &TestJobOne{},
@@ -115,7 +128,7 @@ func (s *PendingJobTestSuite) TestNewPendingChainJob() {
 	mockConfig.EXPECT().DefaultConnection().Return("default").Once()
 	mockConfig.EXPECT().DefaultQueue().Return("default").Once()
 
-	pendingChainJob := NewPendingChainJob(mockConfig, nil, nil, nil, jobs, nil)
+	pendingChainJob := NewPendingChainJob(mockConfig, nil, nil, nil, nil, jobs, nil)
 
 	s.Equal("default", pendingChainJob.connection)
 	s.Equal("default", pendingChainJob.queue)
@@ -145,12 +158,12 @@ func (s *PendingJobTestSuite) TestNewPendingJob() {
 		mockConfig.EXPECT().DefaultConnection().Return("default").Once()
 		mockConfig.EXPECT().DefaultQueue().Return("default").Once()
 
-		pendingJob := NewPendingJob(mockConfig, nil, nil, nil, &TestJobOne{}, nil, args)
+		pendingJob := NewPendingJob(mockConfig, nil, nil, nil, nil, &TestJobOne{}, nil, args)
 
 		s.Equal("default", pendingJob.connection)
 		s.Equal("default", pendingJob.queue)
 		s.NotEmpty(pendingJob.task.UUID)
-		s.Equal(&TestJobOne{}, pendingJob.task.ChainJob.Job)
+		s.Equal(&TestJobOne{}, pendingJob.task.Job)
 		s.Equal(args, pendingJob.task.Args)
 		s.True(pendingJob.delay.IsZero())
 	})
@@ -160,12 +173,12 @@ func (s *PendingJobTestSuite) TestNewPendingJob() {
 		mockConfig.EXPECT().DefaultConnection().Return("default").Once()
 		mockConfig.EXPECT().DefaultQueue().Return("default").Once()
 
-		pendingJob := NewPendingJob(mockConfig, nil, nil, nil, &TestJobOne{}, nil)
+		pendingJob := NewPendingJob(mockConfig, nil, nil, nil, nil, &TestJobOne{}, nil)
 
 		s.Equal("default", pendingJob.connection)
 		s.Equal("default", pendingJob.queue)
 		s.NotEmpty(pendingJob.task.UUID)
-		s.Equal(&TestJobOne{}, pendingJob.task.ChainJob.Job)
+		s.Equal(&TestJobOne{}, pendingJob.task.Job)
 		s.Empty(pendingJob.task.Args)
 		s.True(pendingJob.delay.IsZero())
 	})

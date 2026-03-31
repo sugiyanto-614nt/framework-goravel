@@ -1,6 +1,8 @@
 package file
 
 import (
+	"go/build"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,17 +18,49 @@ func ClientOriginalExtension(file string) string {
 	return strings.ReplaceAll(filepath.Ext(file), ".", "")
 }
 
+// DEPRECATED: Use Contains instead
 func Contain(file string, search string) bool {
+	return Contains(file, search)
+}
+
+func Contains(file string, search string) bool {
 	if Exists(file) {
 		data, err := GetContent(file)
 		if err != nil {
 			return false
 		}
 
+		// Normalize line endings to handle Windows (CRLF) vs Unix (LF) differences
+		data = strings.ReplaceAll(data, "\r\n", "\n")
+		search = strings.ReplaceAll(search, "\r\n", "\n")
+
 		return strings.Contains(data, search)
 	}
 
 	return false
+}
+
+func Copy(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer errors.Ignore(in.Close)
+
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return err
+	}
+	defer errors.Ignore(out.Close)
+
+	_, err = io.Copy(out, in)
+
+	return err
 }
 
 // Create a file with the given content
@@ -40,7 +74,7 @@ func Create(file string, content string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer errors.Ignore(f.Close)
 
 	if _, err = f.WriteString(content); err != nil {
 		return err
@@ -56,22 +90,25 @@ func Exists(file string) bool {
 
 // Extension Supported types: https://github.com/gabriel-vasile/mimetype/blob/master/supported_mimes.md
 func Extension(file string, originalWhenUnknown ...bool) (string, error) {
+	getOriginal := false
+	if len(originalWhenUnknown) > 0 {
+		getOriginal = originalWhenUnknown[0]
+	}
+
 	mtype, err := mimetype.DetectFile(file)
-	if err != nil {
+	if err != nil && !getOriginal {
 		return "", err
 	}
 
-	if mtype.String() == "" {
-		if len(originalWhenUnknown) > 0 {
-			if originalWhenUnknown[0] {
-				return ClientOriginalExtension(file), nil
-			}
-		}
-
-		return "", errors.UnknownFileExtension
+	if mtype != nil && mtype.Extension() != "" {
+		return strings.TrimPrefix(mtype.Extension(), "."), nil
 	}
 
-	return strings.TrimPrefix(mtype.Extension(), "."), nil
+	if getOriginal {
+		return ClientOriginalExtension(file), nil
+	}
+
+	return "", errors.UnknownFileExtension
 }
 
 func GetContent(file string) (string, error) {
@@ -82,6 +119,22 @@ func GetContent(file string) (string, error) {
 	}
 
 	return convert.UnsafeString(data), nil
+}
+
+func GetFrameworkContent(file string) (string, error) {
+	return GetPackageContent("github.com/goravel/framework", file)
+}
+
+func GetPackageContent(pkgName, file string) (string, error) {
+	pkg, err := build.Import(pkgName, "", build.FindOnly)
+	if err != nil {
+		return "", err
+	}
+
+	paths := strings.Split(file, "/")
+	paths = append([]string{pkg.Dir}, paths...)
+
+	return GetContent(filepath.Join(paths...))
 }
 
 func LastModified(file, timezone string) (time.Time, error) {
@@ -137,7 +190,7 @@ func PutContent(file string, content string, options ...Option) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer errors.Ignore(f.Close)
 
 	// Write the content
 	if _, err = f.WriteString(content); err != nil {
@@ -165,7 +218,7 @@ func Size(file string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer fileInfo.Close()
+	defer errors.Ignore(fileInfo.Close)
 
 	fi, err := fileInfo.Stat()
 	if err != nil {

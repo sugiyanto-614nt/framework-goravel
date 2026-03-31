@@ -1,10 +1,21 @@
 package validation
 
-type Option func(map[string]any)
+import "context"
+
+type Options struct {
+	Filters              map[string]any
+	CustomFilters        []Filter
+	Messages             map[string]string
+	Attributes           map[string]string
+	PrepareForValidation func(ctx context.Context, data Data) error
+	MaxMultipartMemory   int64
+}
+
+type Option func(*Options)
 
 type Validation interface {
 	// Make create a new validator instance.
-	Make(data any, rules map[string]string, options ...Option) (Validator, error)
+	Make(ctx context.Context, data any, rules map[string]any, options ...Option) (Validator, error)
 	// AddFilters add the custom filters.
 	AddFilters([]Filter) error
 	// AddRules add the custom rules.
@@ -22,6 +33,8 @@ type Validator interface {
 	Errors() Errors
 	// Fails determine if the validation fails.
 	Fails() bool
+	// Validated get the validated data.
+	Validated() map[string]any
 }
 
 type Errors interface {
@@ -40,15 +53,17 @@ type Data interface {
 	Get(key string) (val any, exist bool)
 	// Set the value for a given key.
 	Set(key string, val any) error
+	// All returns all data.
+	All() map[string]any
 }
 
 type Rule interface {
 	// Signature set the unique signature of the rule.
 	Signature() string
 	// Passes determine if the validation rule passes.
-	Passes(data Data, val any, options ...any) bool
+	Passes(ctx context.Context, data Data, val any, options ...any) bool
 	// Message gets the validation error message.
-	Message() string
+	Message(ctx context.Context) string
 }
 
 type Filter interface {
@@ -86,5 +101,5 @@ type Filter interface {
 	//        return val
 	//    }
 	//
-	Handle() any
+	Handle(ctx context.Context) any
 }

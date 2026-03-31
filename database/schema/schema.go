@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 
@@ -10,24 +11,40 @@ import (
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
 	"github.com/goravel/framework/contracts/log"
 	"github.com/goravel/framework/errors"
+	"github.com/goravel/framework/support/color"
 )
 
 var _ contractsschema.Schema = (*Schema)(nil)
 
 type Schema struct {
-	config     config.Config
-	driver     driver.Driver
-	grammar    driver.Grammar
-	log        log.Log
-	migrations []contractsschema.Migration
-	orm        contractsorm.Orm
-	prefix     string
-	processor  driver.Processor
-	schema     string
-	goTypes    []contractsschema.GoType
+	config           config.Config
+	driver           driver.Driver
+	grammar          driver.Grammar
+	log              log.Log
+	migrations       []contractsschema.Migration
+	orm              contractsorm.Orm
+	prefix           string
+	processor        driver.Processor
+	schema           string
+	goTypes          []contractsschema.GoType
+	models           []any
+	modelsByFullName map[string]any
 }
 
 func NewSchema(config config.Config, log log.Log, orm contractsorm.Orm, driver driver.Driver, migrations []contractsschema.Migration) (*Schema, error) {
+	if driver == nil {
+		return &Schema{
+			config:           config,
+			driver:           driver,
+			log:              log,
+			migrations:       migrations,
+			orm:              orm,
+			goTypes:          defaultGoTypes(),
+			models:           make([]any, 0),
+			modelsByFullName: make(map[string]any),
+		}, nil
+	}
+
 	writers := driver.Pool().Writers
 	if len(writers) == 0 {
 		return nil, errors.DatabaseConfigNotFound
@@ -39,16 +56,18 @@ func NewSchema(config config.Config, log log.Log, orm contractsorm.Orm, driver d
 	processor := driver.Processor()
 
 	return &Schema{
-		config:     config,
-		driver:     driver,
-		grammar:    grammar,
-		log:        log,
-		migrations: migrations,
-		orm:        orm,
-		prefix:     prefix,
-		processor:  processor,
-		schema:     schema,
-		goTypes:    defaultGoTypes(),
+		config:           config,
+		driver:           driver,
+		grammar:          grammar,
+		log:              log,
+		migrations:       migrations,
+		orm:              orm,
+		prefix:           prefix,
+		processor:        processor,
+		schema:           schema,
+		goTypes:          defaultGoTypes(),
+		models:           make([]any, 0),
+		modelsByFullName: make(map[string]any),
 	}, nil
 }
 
@@ -170,6 +189,7 @@ func (r *Schema) DropIfExists(table string) error {
 
 func (r *Schema) Extend(extend contractsschema.Extension) contractsschema.Schema {
 	r.extendGoTypes(extend.GoTypes)
+	r.extendModels(extend.Models)
 	return r
 }
 
@@ -244,6 +264,18 @@ func (r *Schema) GetIndexes(table string) ([]driver.Index, error) {
 	}
 
 	return r.processor.ProcessIndexes(dbIndexes), nil
+}
+
+// GetModel retrieves a registered model by name. If the name doesn't contain a package
+// (no dot), it automatically prepends "models." to the name. Returns nil if the model
+// is not found in the registry.
+func (r *Schema) GetModel(name string) any {
+	// If no dot, assume "models" package
+	if !strings.Contains(name, ".") {
+		name = "models." + name
+	}
+
+	return r.modelsByFullName[name]
 }
 
 func (r *Schema) GetTableListing() []string {
@@ -380,8 +412,29 @@ func (r *Schema) Orm() contractsorm.Orm {
 	return r.orm
 }
 
+func (r *Schema) Prune() error {
+	if sql := r.grammar.CompilePrune(r.orm.DatabaseName()); len(sql) > 0 {
+		_, err := r.orm.Query().Exec(sql)
+
+		return err
+	}
+
+	return nil
+}
+
 func (r *Schema) Register(migrations []contractsschema.Migration) {
-	r.migrations = migrations
+	existingSignatures := make(map[string]bool)
+
+	for _, migration := range migrations {
+		signature := migration.Signature()
+
+		if existingSignatures[signature] {
+			color.Errorf("Duplicate migration signature: %s in %T\n", signature, migration)
+		} else {
+			existingSignatures[signature] = true
+			r.migrations = append(r.migrations, migration)
+		}
+	}
 }
 
 func (r *Schema) Rename(from, to string) error {
@@ -474,6 +527,50 @@ func (r *Schema) extendGoTypes(overrides []contractsschema.GoType) {
 	}
 
 	r.goTypes = result
+}
+
+func (r *Schema) extendModels(models []any) {
+	for _, m := range models {
+		fullName := getModelName(m)
+		if fullName == "" {
+			continue
+		}
+
+		// Use full name for duplicate detection
+		if _, exists := r.modelsByFullName[fullName]; exists {
+			continue
+		}
+
+		r.models = append(r.models, m)
+		r.modelsByFullName[fullName] = m
+	}
+}
+
+// modelType returns the reflect.Type for a model, dereferencing pointers.
+func modelType(m any) reflect.Type {
+	if m == nil {
+		return nil
+	}
+	t := reflect.TypeOf(m)
+	if t.Kind() == reflect.Ptr {
+		return t.Elem()
+	}
+	return t
+}
+
+// getModelName returns package.TypeName (e.g., "models.User").
+func getModelName(m any) string {
+	t := modelType(m)
+	if t == nil {
+		return ""
+	}
+	if pkg := t.PkgPath(); pkg != "" {
+		if i := strings.LastIndexByte(pkg, '/'); i >= 0 {
+			pkg = pkg[i+1:]
+		}
+		return pkg + "." + t.Name()
+	}
+	return t.Name()
 }
 
 func defaultGoTypes() []contractsschema.GoType {

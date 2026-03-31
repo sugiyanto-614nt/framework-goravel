@@ -40,7 +40,12 @@ type JobStorer interface {
 type Jobs = ChainJob
 
 type ChainJob struct {
+	Delay time.Time `json:"delay"`
 	Job   Job       `json:"job"`
 	Args  []Arg     `json:"args"`
-	Delay time.Time `json:"delay"`
+}
+
+type JobWithShouldRetry interface {
+	// ShouldRetry determines if the job should be retried based on the error.
+	ShouldRetry(err error, attempt int) (retryable bool, delay time.Duration)
 }

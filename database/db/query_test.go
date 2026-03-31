@@ -21,11 +21,11 @@ import (
 
 // TestUser is a test model
 type TestUser struct {
-	ID    uint   `db:"id"`
-	Phone string `db:"phone"`
-	Email string `db:"email"`
+	ID    uint `db:"id"`
+	Phone string
+	Email string
 	Name  string `db:"-"`
-	Age   int
+	Age   int    `db:"-"`
 }
 
 type QueryTestSuite struct {
@@ -55,20 +55,128 @@ func (s *QueryTestSuite) SetupTest() {
 	s.query = NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
 }
 
+func (s *QueryTestSuite) TestAddWhere() {
+	query := &Query{}
+	query = query.addWhere(driver.Where{
+		Query: "name",
+		Args:  []any{"test"},
+	}).(*Query)
+	query = query.addWhere(driver.Where{
+		Query: "name1",
+		Args:  []any{"test1"},
+	}).(*Query)
+	query = query.addWhere(driver.Where{
+		Query: "name2",
+		Args:  []any{"test2"},
+	}).(*Query)
+	query1 := query.addWhere(driver.Where{
+		Query: "name3",
+		Args:  []any{"test3"},
+	}).(*Query)
+
+	s.Equal([]driver.Where{
+		{Query: "name", Args: []any{"test"}},
+		{Query: "name1", Args: []any{"test1"}},
+		{Query: "name2", Args: []any{"test2"}},
+	}, query.conditions.Where)
+
+	s.Equal([]driver.Where{
+		{Query: "name", Args: []any{"test"}},
+		{Query: "name1", Args: []any{"test1"}},
+		{Query: "name2", Args: []any{"test2"}},
+		{Query: "name3", Args: []any{"test3"}},
+	}, query1.conditions.Where)
+
+	query2 := query.addWhere(driver.Where{
+		Query: "name4",
+		Args:  []any{"test4"},
+	}).(*Query)
+
+	s.Equal([]driver.Where{
+		{Query: "name", Args: []any{"test"}},
+		{Query: "name1", Args: []any{"test1"}},
+		{Query: "name2", Args: []any{"test2"}},
+		{Query: "name4", Args: []any{"test4"}},
+	}, query2.conditions.Where)
+
+	s.Equal([]driver.Where{
+		{Query: "name", Args: []any{"test"}},
+		{Query: "name1", Args: []any{"test1"}},
+		{Query: "name2", Args: []any{"test2"}},
+	}, query.conditions.Where)
+
+	s.Equal([]driver.Where{
+		{Query: "name", Args: []any{"test"}},
+		{Query: "name1", Args: []any{"test1"}},
+		{Query: "name2", Args: []any{"test2"}},
+		{Query: "name3", Args: []any{"test3"}},
+	}, query1.conditions.Where)
+}
+
 func (s *QueryTestSuite) TestCount() {
-	var count int64
+	s.Run("without select", func() {
+		var count int64
 
-	s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
-	s.mockReadBuilder.EXPECT().GetContext(s.ctx, &count, "SELECT COUNT(*) FROM users WHERE name = ?", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
-		destCount := dest.(*int64)
-		*destCount = 1
-	}).Return(nil).Once()
-	s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(*) FROM users WHERE name = ?", "John").Return("SELECT COUNT(*) FROM users WHERE name = \"John\"").Once()
-	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(*) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &count, "SELECT COUNT(*) FROM users WHERE name = ?", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
+			destCount := dest.(*int64)
+			*destCount = 1
+		}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(*) FROM users WHERE name = ?", "John").Return("SELECT COUNT(*) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(*) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
 
-	count, err := s.query.Where("name", "John").Count()
-	s.NoError(err)
-	s.Equal(int64(1), count)
+		count, err := s.query.Where("name", "John").Count()
+		s.NoError(err)
+		s.Equal(int64(1), count)
+	})
+
+	s.Run("with select - one column", func() {
+		var count int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &count, "SELECT COUNT(name) FROM users WHERE name = ?", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
+			destCount := dest.(*int64)
+			*destCount = 1
+		}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(name) FROM users WHERE name = ?", "John").Return("SELECT COUNT(name) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(name) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		count, err := s.query.Select("name").Where("name", "John").Count()
+		s.NoError(err)
+		s.Equal(int64(1), count)
+	})
+
+	s.Run("with select - one column with rename", func() {
+		var count int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &count, "SELECT COUNT(name) FROM users WHERE name = ?", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
+			destCount := dest.(*int64)
+			*destCount = 1
+		}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(name) FROM users WHERE name = ?", "John").Return("SELECT COUNT(name) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(name) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		count, err := s.query.Select("name as name").Where("name", "John").Count()
+		s.NoError(err)
+		s.Equal(int64(1), count)
+	})
+
+	s.Run("with select - multiple columns", func() {
+		var count int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &count, "SELECT COUNT(*) FROM users WHERE name = ?", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
+			destCount := dest.(*int64)
+			*destCount = 1
+		}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(*) FROM users WHERE name = ?", "John").Return("SELECT COUNT(*) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(*) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		count, err := s.query.Select("name", "avatar").Where("name", "John").Count()
+		s.NoError(err)
+		s.Equal(int64(1), count)
+	})
 }
 
 func (s *QueryTestSuite) TestCrossJoin() {
@@ -87,7 +195,10 @@ func (s *QueryTestSuite) TestDecrement() {
 	mockResult := &MockResult{}
 	mockResult.On("RowsAffected").Return(int64(1), nil)
 
+	update := map[string]any{"age": sq.Expr("age - ?", uint64(1))}
+
 	s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+	s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
 	s.mockWriteBuilder.EXPECT().ExecContext(s.ctx, "UPDATE users SET age = age - ? WHERE name = ?", uint64(1), "John").Return(mockResult, nil).Once()
 	s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET age = age - ? WHERE name = ?", uint64(1), "John").Return("UPDATE users SET age = age - 1 WHERE name = \"John\"").Once()
 	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "UPDATE users SET age = age - 1 WHERE name = \"John\"", int64(1), nil).Return().Once()
@@ -140,15 +251,98 @@ func (s *QueryTestSuite) TestDelete() {
 }
 
 func (s *QueryTestSuite) TestDistinct() {
-	var users TestUser
+	s.Run("without column", func() {
+		var users TestUser
 
-	s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
-	s.mockReadBuilder.EXPECT().GetContext(s.ctx, &users, "SELECT DISTINCT * FROM users WHERE name = ?", "John").Return(nil).Once()
-	s.mockReadBuilder.EXPECT().Explain("SELECT DISTINCT * FROM users WHERE name = ?", "John").Return("SELECT DISTINCT * FROM users WHERE name = \"John\"").Once()
-	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT DISTINCT * FROM users WHERE name = \"John\"", int64(1), nil).Return().Once()
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &users, "SELECT DISTINCT * FROM users WHERE name = ?", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT DISTINCT * FROM users WHERE name = ?", "John").Return("SELECT DISTINCT * FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT DISTINCT * FROM users WHERE name = \"John\"", int64(1), nil).Return().Once()
 
-	err := s.query.Where("name", "John").Distinct().First(&users)
-	s.NoError(err)
+		err := s.query.Where("name", "John").Distinct().First(&users)
+		s.NoError(err)
+	})
+
+	s.Run("with one column", func() {
+		var users TestUser
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &users, "SELECT DISTINCT name FROM users WHERE name = ?", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT DISTINCT name FROM users WHERE name = ?", "John").Return("SELECT DISTINCT name FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT DISTINCT name FROM users WHERE name = \"John\"", int64(1), nil).Return().Once()
+
+		err := s.query.Where("name", "John").Distinct("name").First(&users)
+		s.NoError(err)
+	})
+
+	s.Run("with multiple columns", func() {
+		var users TestUser
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &users, "SELECT DISTINCT name, age FROM users WHERE name = ?", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT DISTINCT name, age FROM users WHERE name = ?", "John").Return("SELECT DISTINCT name, age FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT DISTINCT name, age FROM users WHERE name = \"John\"", int64(1), nil).Return().Once()
+
+		err := s.query.Where("name", "John").Distinct("name", "age").First(&users)
+		s.NoError(err)
+	})
+
+	s.Run("Count - without column", func() {
+		count, err := s.query.Where("name", "John").Distinct().Count()
+		s.Equal(errors.DatabaseCountDistinctWithoutColumns, err)
+		s.Equal(int64(0), count)
+	})
+
+	s.Run("Count - with one column", func() {
+		var count int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &count, "SELECT COUNT(DISTINCT name) FROM users WHERE name = ?", "John").RunAndReturn(func(ctx context.Context, i1 interface{}, s string, i2 ...interface{}) error {
+			destCount := i1.(*int64)
+			*destCount = 1
+			return nil
+		}).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(DISTINCT name) FROM users WHERE name = ?", "John").Return("SELECT COUNT(DISTINCT name) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(DISTINCT name) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		res, err := s.query.Where("name", "John").Distinct("name").Count()
+		s.NoError(err)
+		s.Equal(int64(1), res)
+	})
+
+	s.Run("Count - with one column and rename", func() {
+		var count int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &count, "SELECT COUNT(DISTINCT name) FROM users WHERE name = ?", "John").RunAndReturn(func(ctx context.Context, i1 interface{}, s string, i2 ...interface{}) error {
+			destCount := i1.(*int64)
+			*destCount = 1
+			return nil
+		}).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(DISTINCT name) FROM users WHERE name = ?", "John").Return("SELECT COUNT(DISTINCT name) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(DISTINCT name) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		res, err := s.query.Where("name", "John").Distinct("name as name").Count()
+		s.NoError(err)
+		s.Equal(int64(1), res)
+	})
+
+	s.Run("Count - with multiple columns", func() {
+		var count int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &count, "SELECT COUNT(*) FROM users WHERE name = ?", "John").RunAndReturn(func(ctx context.Context, i1 interface{}, s string, i2 ...interface{}) error {
+			destCount := i1.(*int64)
+			*destCount = 1
+			return nil
+		}).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(*) FROM users WHERE name = ?", "John").Return("SELECT COUNT(*) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(*) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		res, err := s.query.Where("name", "John").Distinct("name", "age").Count()
+		s.NoError(err)
+		s.Equal(int64(1), res)
+	})
 }
 
 func (s *QueryTestSuite) TestExists() {
@@ -461,10 +655,13 @@ func (s *QueryTestSuite) TestIncrement() {
 	mockResult := &MockResult{}
 	mockResult.On("RowsAffected").Return(int64(1), nil)
 
+	update := map[string]any{"age": sq.Expr("age + ?", uint64(1))}
+
 	s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
 	s.mockWriteBuilder.EXPECT().ExecContext(s.ctx, "UPDATE users SET age = age + ? WHERE name = ?", uint64(1), "John").Return(mockResult, nil).Once()
 	s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET age = age + ? WHERE name = ?", uint64(1), "John").Return("UPDATE users SET age = age + 1 WHERE name = \"John\"").Once()
 	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "UPDATE users SET age = age + 1 WHERE name = \"John\"", int64(1), nil).Return().Once()
+	s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
 
 	err := s.query.Where("name", "John").Increment("age")
 	s.NoError(err)
@@ -972,28 +1169,111 @@ func (s *QueryTestSuite) TestOrWhereRaw() {
 }
 
 func (s *QueryTestSuite) TestPaginate() {
-	var users []TestUser
-	var total int64
+	s.Run("without Select", func() {
+		var users []TestUser
+		var total int64
 
-	s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Twice()
-	s.mockReadBuilder.EXPECT().GetContext(s.ctx, &total, "SELECT COUNT(*) FROM users WHERE name = ?", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
-		destTotal := dest.(*int64)
-		*destTotal = 2
-	}).Return(nil).Once()
-	s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(*) FROM users WHERE name = ?", "John").Return("SELECT COUNT(*) FROM users WHERE name = \"John\"").Once()
-	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(*) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Twice()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &total, "SELECT COUNT(*) FROM users WHERE name = ?", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
+			destTotal := dest.(*int64)
+			*destTotal = 2
+		}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(*) FROM users WHERE name = ?", "John").Return("SELECT COUNT(*) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(*) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
 
-	s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
-		destUsers := dest.(*[]TestUser)
-		*destUsers = []TestUser{{ID: 1, Name: "John", Age: 25}, {ID: 2, Name: "Jane", Age: 30}}
-	}).Return(nil).Once()
-	s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").Return("SELECT * FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0").Once()
-	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0", int64(2), nil).Return().Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").Run(func(ctx context.Context, dest any, query string, args ...any) {
+			destUsers := dest.(*[]TestUser)
+			*destUsers = []TestUser{{ID: 1, Name: "John", Age: 25}, {ID: 2, Name: "Jane", Age: 30}}
+		}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").Return("SELECT * FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0", int64(2), nil).Return().Once()
 
-	err := s.query.Where("name", "John").Paginate(1, 10, &users, &total)
-	s.Nil(err)
-	s.Equal(int64(2), total)
-	s.Equal(2, len(users))
+		err := s.query.Where("name", "John").Paginate(1, 10, &users, &total)
+		s.Nil(err)
+		s.Equal(int64(2), total)
+		s.Equal(2, len(users))
+	})
+
+	s.Run("with Select - one column", func() {
+		var users []TestUser
+		var total int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Twice()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &total, "SELECT COUNT(name) FROM users WHERE name = ?", "John").
+			Run(func(ctx context.Context, dest any, query string, args ...any) {
+				destTotal := dest.(*int64)
+				*destTotal = 2
+			}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(name) FROM users WHERE name = ?", "John").Return("SELECT COUNT(name) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(name) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT name FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").
+			Run(func(ctx context.Context, dest any, query string, args ...any) {
+				destUsers := dest.(*[]TestUser)
+				*destUsers = []TestUser{{ID: 1, Name: "John", Age: 25}, {ID: 2, Name: "Jane", Age: 30}}
+			}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT name FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").Return("SELECT name FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT name FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0", int64(2), nil).Return().Once()
+
+		err := s.query.Select("name").Where("name", "John").Paginate(1, 10, &users, &total)
+		s.Nil(err)
+		s.Equal(int64(2), total)
+		s.Equal(2, len(users))
+	})
+
+	s.Run("with Select - one column with rename", func() {
+		var users []TestUser
+		var total int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Twice()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &total, "SELECT COUNT(name) FROM users WHERE name = ?", "John").
+			Run(func(ctx context.Context, dest any, query string, args ...any) {
+				destTotal := dest.(*int64)
+				*destTotal = 2
+			}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(name) FROM users WHERE name = ?", "John").Return("SELECT COUNT(name) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(name) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT name as name FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").
+			Run(func(ctx context.Context, dest any, query string, args ...any) {
+				destUsers := dest.(*[]TestUser)
+				*destUsers = []TestUser{{ID: 1, Name: "John", Age: 25}, {ID: 2, Name: "Jane", Age: 30}}
+			}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT name as name FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").Return("SELECT name as name FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT name as name FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0", int64(2), nil).Return().Once()
+
+		err := s.query.Select("name as name").Where("name", "John").Paginate(1, 10, &users, &total)
+		s.Nil(err)
+		s.Equal(int64(2), total)
+		s.Equal(2, len(users))
+	})
+
+	s.Run("with Select - multiple columns", func() {
+		var users []TestUser
+		var total int64
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Twice()
+		s.mockReadBuilder.EXPECT().GetContext(s.ctx, &total, "SELECT COUNT(*) FROM users WHERE name = ?", "John").
+			Run(func(ctx context.Context, dest any, query string, args ...any) {
+				destTotal := dest.(*int64)
+				*destTotal = 2
+			}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT COUNT(*) FROM users WHERE name = ?", "John").Return("SELECT COUNT(*) FROM users WHERE name = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT COUNT(*) FROM users WHERE name = \"John\"", int64(-1), nil).Return().Once()
+
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT name, age FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").
+			Run(func(ctx context.Context, dest any, query string, args ...any) {
+				destUsers := dest.(*[]TestUser)
+				*destUsers = []TestUser{{ID: 1, Name: "John", Age: 25}, {ID: 2, Name: "Jane", Age: 30}}
+			}).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT name, age FROM users WHERE name = ? LIMIT 10 OFFSET 0", "John").Return("SELECT name, age FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT name, age FROM users WHERE name = \"John\" LIMIT 10 OFFSET 0", int64(2), nil).Return().Once()
+
+		err := s.query.Select("name", "age").Where("name", "John").Paginate(1, 10, &users, &total)
+		s.Nil(err)
+		s.Equal(int64(2), total)
+		s.Equal(2, len(users))
+	})
 }
 
 func (s *QueryTestSuite) TestPluck() {
@@ -1081,17 +1361,99 @@ func (s *QueryTestSuite) TestSum() {
 	s.mockReadBuilder.EXPECT().Explain("SELECT SUM(age) FROM users WHERE age = ?", 25).Return("SELECT SUM(age) FROM users WHERE age = 25").Once()
 	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT SUM(age) FROM users WHERE age = 25", int64(1), nil).Return().Once()
 
-	sum, err := s.query.Where("age", 25).Sum("age")
+	err := s.query.Where("age", 25).Sum("age", &sum)
 	s.Nil(err)
 	s.Equal(int64(25), sum)
+
+	err = s.query.Where("age", 25).Sum("age", nil)
+	s.Error(err)
+}
+
+func (s *QueryTestSuite) TestAvg() {
+	var avg float64
+
+	s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+	s.mockReadBuilder.EXPECT().GetContext(s.ctx, &avg, "SELECT AVG(age) FROM users WHERE age = ?", 25).Run(func(ctx context.Context, dest any, query string, args ...any) {
+		destAvg := dest.(*float64)
+		*destAvg = 25.5
+	}).Return(nil).Once()
+	s.mockReadBuilder.EXPECT().Explain("SELECT AVG(age) FROM users WHERE age = ?", 25).Return("SELECT AVG(age) FROM users WHERE age = 25").Once()
+	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT AVG(age) FROM users WHERE age = 25", int64(1), nil).Return().Once()
+
+	err := s.query.Where("age", 25).Avg("age", &avg)
+	s.Nil(err)
+	s.Equal(float64(25.5), avg)
+
+	err = s.query.Where("age", 25).Avg("age", nil)
+	s.Error(err)
+}
+
+func (s *QueryTestSuite) TestMin() {
+	var min int64
+
+	s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+	s.mockReadBuilder.EXPECT().GetContext(s.ctx, &min, "SELECT MIN(age) FROM users WHERE age = ?", 25).Run(func(ctx context.Context, dest any, query string, args ...any) {
+		destMin := dest.(*int64)
+		*destMin = 20
+	}).Return(nil).Once()
+	s.mockReadBuilder.EXPECT().Explain("SELECT MIN(age) FROM users WHERE age = ?", 25).Return("SELECT MIN(age) FROM users WHERE age = 25").Once()
+	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT MIN(age) FROM users WHERE age = 25", int64(1), nil).Return().Once()
+
+	err := s.query.Where("age", 25).Min("age", &min)
+	s.Nil(err)
+	s.Equal(int64(20), min)
+
+	err = s.query.Where("age", 25).Min("age", nil)
+	s.Error(err)
+}
+
+func (s *QueryTestSuite) TestMax() {
+	var max int64
+
+	s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+	s.mockReadBuilder.EXPECT().GetContext(s.ctx, &max, "SELECT MAX(age) FROM users WHERE age = ?", 25).Run(func(ctx context.Context, dest any, query string, args ...any) {
+		destMax := dest.(*int64)
+		*destMax = 30
+	}).Return(nil).Once()
+	s.mockReadBuilder.EXPECT().Explain("SELECT MAX(age) FROM users WHERE age = ?", 25).Return("SELECT MAX(age) FROM users WHERE age = 25").Once()
+	s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT MAX(age) FROM users WHERE age = 25", int64(1), nil).Return().Once()
+
+	err := s.query.Where("age", 25).Max("age", &max)
+	s.Nil(err)
+	s.Equal(int64(30), max)
+
+	err = s.query.Where("age", 25).Max("age", nil)
+	s.Error(err)
 }
 
 func (s *QueryTestSuite) TestToSql() {
 	s.Run("Count", func() {
-		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Times(7)
 
 		sql := s.query.Where("name", "John").ToSql().Count()
 		s.Equal("SELECT COUNT(*) FROM users WHERE name = ?", sql)
+
+		s.mockLogger.EXPECT().Errorf(s.ctx, "failed to get sql: cannot use Count with Distinct without specifying columns").Once()
+		sql = s.query.Distinct().Where("name", "John").ToSql().Count()
+		s.Empty(sql)
+
+		sql = s.query.Distinct("name").Where("name", "John").ToSql().Count()
+		s.Equal("SELECT COUNT(DISTINCT name) FROM users WHERE name = ?", sql)
+
+		sql = s.query.Distinct("name", "avatar").Where("name", "John").ToSql().Count()
+		s.Equal("SELECT COUNT(*) FROM users WHERE name = ?", sql)
+
+		sql = s.query.Select("name", "avatar").Where("name", "John").ToSql().Count()
+		s.Equal("SELECT COUNT(*) FROM users WHERE name = ?", sql)
+
+		sql = s.query.Select("name as n").Where("name", "John").ToSql().Count()
+		s.Equal("SELECT COUNT(name) FROM users WHERE name = ?", sql)
+
+		sql = s.query.Select("name n").Where("name", "John").ToSql().Count()
+		s.Equal("SELECT COUNT(name) FROM users WHERE name = ?", sql)
+
+		sql = s.query.Select("name").Where("name", "John").ToSql().Count()
+		s.Equal("SELECT COUNT(name) FROM users WHERE name = ?", sql)
 	})
 
 	s.Run("Delete", func() {
@@ -1139,14 +1501,19 @@ func (s *QueryTestSuite) TestToSql() {
 	})
 
 	s.Run("Update", func() {
-		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Times(3)
+		update := map[string]any{"name": "Jane"}
 
-		sql := s.query.Where("name", "John").ToSql().Update(map[string]any{"name": "Jane"})
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Times(3)
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Twice()
+
+		sql := s.query.Where("name", "John").ToSql().Update(update)
 		s.Equal("UPDATE users SET name = ? WHERE name = ?", sql)
 
 		sql = s.query.Where("name", "John").ToSql().Update("name", "Jane")
 		s.Equal("UPDATE users SET name = ? WHERE name = ?", sql)
 
+		update = map[string]any{"phone": "1234567890"}
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
 		sql = s.query.Where("name", "John").ToSql().Update(TestUser{Phone: "1234567890"})
 		s.Equal("UPDATE users SET phone = ? WHERE name = ?", sql)
 	})
@@ -1214,16 +1581,21 @@ func (s *QueryTestSuite) TestToRawSql() {
 	})
 
 	s.Run("Update", func() {
+		update := map[string]any{"name": "Jane"}
+
 		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Times(3)
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Twice()
 
 		s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET name = ? WHERE name = ?", "Jane", "John").Return("UPDATE users SET name = \"Jane\" WHERE name = \"John\"").Once()
-		sql := s.query.Where("name", "John").ToRawSql().Update(map[string]any{"name": "Jane"})
+		sql := s.query.Where("name", "John").ToRawSql().Update(update)
 		s.Equal("UPDATE users SET name = \"Jane\" WHERE name = \"John\"", sql)
 
 		s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET name = ? WHERE name = ?", "Jane", "John").Return("UPDATE users SET name = \"Jane\" WHERE name = \"John\"").Once()
 		sql = s.query.Where("name", "John").ToRawSql().Update("name", "Jane")
 		s.Equal("UPDATE users SET name = \"Jane\" WHERE name = \"John\"", sql)
 
+		update = map[string]any{"phone": "1234567890"}
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
 		s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET phone = ? WHERE name = ?", "1234567890", "John").Return("UPDATE users SET phone = \"1234567890\" WHERE name = \"John\"").Once()
 		sql = s.query.Where("name", "John").ToRawSql().Update(TestUser{Phone: "1234567890"})
 		s.Equal("UPDATE users SET phone = \"1234567890\" WHERE name = \"John\"", sql)
@@ -1238,6 +1610,9 @@ func (s *QueryTestSuite) TestUpdate() {
 			Age:   25,
 		}
 
+		update, err := convertToMap(user)
+		s.Require().NoError(err)
+
 		mockResult := &MockResult{}
 		mockResult.On("RowsAffected").Return(int64(1), nil)
 
@@ -1245,6 +1620,7 @@ func (s *QueryTestSuite) TestUpdate() {
 		s.mockWriteBuilder.EXPECT().ExecContext(s.ctx, "UPDATE users SET phone = ? WHERE (name = ? AND id = ?)", "1234567890", "John", 1).Return(mockResult, nil).Once()
 		s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET phone = ? WHERE (name = ? AND id = ?)", "1234567890", "John", 1).Return("UPDATE users SET phone = \"1234567890\" WHERE (name = \"John\" AND id = 1)").Once()
 		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "UPDATE users SET phone = \"1234567890\" WHERE (name = \"John\" AND id = 1)", int64(1), nil).Return().Once()
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
 
 		result, err := s.query.Where("name", "John").Where("id", 1).Update(user)
 		s.Nil(err)
@@ -1267,6 +1643,7 @@ func (s *QueryTestSuite) TestUpdate() {
 		s.mockWriteBuilder.EXPECT().ExecContext(s.ctx, "UPDATE users SET age = ?, name = ?, phone = ? WHERE (name = ? AND id = ?)", 25, "John", "1234567890", "John", 1).Return(mockResult, nil).Once()
 		s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET age = ?, name = ?, phone = ? WHERE (name = ? AND id = ?)", 25, "John", "1234567890", "John", 1).Return("UPDATE users SET age = 25, name = \"John\", phone = \"1234567890\" WHERE (name = \"John\" AND id = 1)").Once()
 		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "UPDATE users SET age = 25, name = \"John\", phone = \"1234567890\" WHERE (name = \"John\" AND id = 1)", int64(1), nil).Return().Once()
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(user).Return(user, nil).Once()
 
 		result, err := s.query.Where("name", "John").Where("id", 1).Update(user)
 		s.Nil(err)
@@ -1283,6 +1660,7 @@ func (s *QueryTestSuite) TestUpdate() {
 		s.mockWriteBuilder.EXPECT().ExecContext(s.ctx, "UPDATE users SET phone = ? WHERE name = ?", "1234567890", "John").Return(mockResult, nil).Once()
 		s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET phone = ? WHERE name = ?", "1234567890", "John").Return("UPDATE users SET phone = \"1234567890\" WHERE name = \"John\"").Once()
 		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "UPDATE users SET phone = \"1234567890\" WHERE name = \"John\"", int64(1), nil).Return().Once()
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(map[string]any{"phone": "1234567890"}).Return(map[string]any{"phone": "1234567890"}, nil).Once()
 
 		result, err := s.query.Where("name", "John").Update("phone", "1234567890")
 		s.Nil(err)
@@ -1303,10 +1681,14 @@ func (s *QueryTestSuite) TestUpdate() {
 			Age:   25,
 		}
 
+		update, err := convertToMap(user)
+		s.Require().NoError(err)
+
 		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
 		s.mockWriteBuilder.EXPECT().ExecContext(s.ctx, "UPDATE users SET phone = ? WHERE (name = ? AND id = ?)", "1234567890", "John", 1).Return(nil, assert.AnError).Once()
 		s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET phone = ? WHERE (name = ? AND id = ?)", "1234567890", "John", 1).Return("UPDATE users SET phone = \"1234567890\" WHERE (name = \"John\" AND id = 1)").Once()
 		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "UPDATE users SET phone = \"1234567890\" WHERE (name = \"John\" AND id = 1)", int64(-1), assert.AnError).Return().Once()
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
 
 		result, err := s.query.Where("name", "John").Where("id", 1).Update(user)
 		s.Nil(result)
@@ -1320,6 +1702,9 @@ func (s *QueryTestSuite) TestUpdate() {
 			Age:   25,
 		}
 
+		update, err := convertToMap(user)
+		s.Require().NoError(err)
+
 		mockResult := &MockResult{}
 		mockResult.On("RowsAffected").Return(int64(0), assert.AnError).Once()
 
@@ -1327,6 +1712,7 @@ func (s *QueryTestSuite) TestUpdate() {
 		s.mockWriteBuilder.EXPECT().ExecContext(s.ctx, "UPDATE users SET phone = ? WHERE (name = ? AND id = ?)", "1234567890", "John", 1).Return(mockResult, nil).Once()
 		s.mockWriteBuilder.EXPECT().Explain("UPDATE users SET phone = ? WHERE (name = ? AND id = ?)", "1234567890", "John", 1).Return("UPDATE users SET phone = \"1234567890\" WHERE (name = \"John\" AND id = 1)").Once()
 		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "UPDATE users SET phone = \"1234567890\" WHERE (name = \"John\" AND id = 1)", int64(-1), assert.AnError).Return().Once()
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
 
 		result, err := s.query.Where("name", "John").Where("id", 1).Update(user)
 		s.Nil(result)
@@ -1360,6 +1746,11 @@ func (s *QueryTestSuite) TestUpdateOrInsert() {
 		user := TestUser{
 			Phone: "1234567890",
 		}
+
+		update, err := convertToMap(user)
+		s.Require().NoError(err)
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
+
 		result, err := s.query.Where("id", 1).UpdateOrInsert(whereUser, user)
 		s.Nil(err)
 		s.Equal(int64(1), result.RowsAffected)
@@ -1392,6 +1783,11 @@ func (s *QueryTestSuite) TestUpdateOrInsert() {
 		user := map[string]any{
 			"phone": "1234567890",
 		}
+
+		update, err := convertToMap(user)
+		s.Require().NoError(err)
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
+
 		result, err := s.query.Where("id", 1).UpdateOrInsert(whereUser, user)
 		s.Nil(err)
 		s.Equal(int64(1), result.RowsAffected)
@@ -1424,6 +1820,11 @@ func (s *QueryTestSuite) TestUpdateOrInsert() {
 		user := TestUser{
 			Phone: "1234567890",
 		}
+
+		update, err := convertToMap(user)
+		s.Require().NoError(err)
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
+
 		result, err := s.query.Where("id", 1).UpdateOrInsert(whereUser, user)
 		s.Nil(err)
 		s.Equal(int64(1), result.RowsAffected)
@@ -1456,6 +1857,11 @@ func (s *QueryTestSuite) TestUpdateOrInsert() {
 		user := map[string]any{
 			"phone": "1234567890",
 		}
+
+		update, err := convertToMap(user)
+		s.Require().NoError(err)
+		s.mockGrammar.EXPECT().CompileJsonColumnsUpdate(update).Return(update, nil).Once()
+
 		result, err := s.query.Where("id", 1).UpdateOrInsert(whereUser, user)
 		s.Nil(err)
 		s.Equal(int64(1), result.RowsAffected)
@@ -1637,7 +2043,7 @@ func (s *QueryTestSuite) TestWhereColumn() {
 
 	s.Run("with not enough arguments", func() {
 		err := s.query.WhereColumn("age").WhereColumn("name", "=", "John").Get(&users)
-		s.Equal(errors.DatabaseInvalidArgumentNumber.Args(2, "1 or 2"), err)
+		s.Equal(errors.DatabaseInvalidArgumentNumber.Args(0, "1 or 2"), err)
 	})
 }
 
@@ -1791,6 +2197,181 @@ func (s *QueryTestSuite) TestWhereRaw() {
 
 	err := s.query.WhereRaw("age = ? or age = ?", []any{25, 30}).Get(&users)
 	s.Nil(err)
+}
+
+func (s *QueryTestSuite) TestWhereAny() {
+	s.Run("basic WhereAny", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (name = ? OR email = ?)", "John", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (name = ? OR email = ?)", "John", "John").Return("SELECT * FROM users WHERE (name = \"John\" OR email = \"John\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (name = \"John\" OR email = \"John\")", int64(0), nil).Return().Once()
+
+		err := query.WhereAny([]string{"name", "email"}, "=", "John").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("combined with Where clause", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age = ? AND (name = ? OR email = ?))", 10, "John", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age = ? AND (name = ? OR email = ?))", 10, "John", "John").Return("SELECT * FROM users WHERE (age = 10 AND (name = \"John\" OR email = \"John\"))").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age = 10 AND (name = \"John\" OR email = \"John\"))", int64(0), nil).Return().Once()
+
+		err := query.Where("age = ?", 10).WhereAny([]string{"name", "email"}, "=", "John").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("Where before and after WhereAny", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age >= ? AND (name = ? OR email = ?) AND status = ?)", 18, "John", "John", "active").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age >= ? AND (name = ? OR email = ?) AND status = ?)", 18, "John", "John", "active").Return("SELECT * FROM users WHERE (age >= 18 AND (name = \"John\" OR email = \"John\") AND status = \"active\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age >= 18 AND (name = \"John\" OR email = \"John\") AND status = \"active\")", int64(0), nil).Return().Once()
+
+		err := query.Where("age >= ?", 18).WhereAny([]string{"name", "email"}, "=", "John").Where("status = ?", "active").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("Where before and after WhereAny with greater than operator", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age >= ? AND (score > ? OR points > ?) AND status = ?)", 18, 100, 100, "active").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age >= ? AND (score > ? OR points > ?) AND status = ?)", 18, 100, 100, "active").Return("SELECT * FROM users WHERE (age >= 18 AND (score > 100 OR points > 100) AND status = \"active\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age >= 18 AND (score > 100 OR points > 100) AND status = \"active\")", int64(0), nil).Return().Once()
+
+		err := query.Where("age >= ?", 18).WhereAny([]string{"score", "points"}, ">", 100).Where("status = ?", "active").Get(&users)
+		s.Nil(err)
+	})
+}
+
+func (s *QueryTestSuite) TestWhereAll() {
+	s.Run("basic WhereAll", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE name = ? AND email = ?", "John", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE name = ? AND email = ?", "John", "John").Return("SELECT * FROM users WHERE name = \"John\" AND email = \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE name = \"John\" AND email = \"John\"", int64(0), nil).Return().Once()
+
+		err := query.WhereAll([]string{"name", "email"}, "=", "John").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("combined with Where clause", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age = ? AND name = ? AND email = ?)", 10, "John", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age = ? AND name = ? AND email = ?)", 10, "John", "John").Return("SELECT * FROM users WHERE (age = 10 AND name = \"John\" AND email = \"John\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age = 10 AND name = \"John\" AND email = \"John\")", int64(0), nil).Return().Once()
+
+		err := query.Where("age = ?", 10).WhereAll([]string{"name", "email"}, "=", "John").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("Where before and after WhereAll", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age >= ? AND name = ? AND email = ? AND status = ?)", 18, "John", "John", "active").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age >= ? AND name = ? AND email = ? AND status = ?)", 18, "John", "John", "active").Return("SELECT * FROM users WHERE (age >= 18 AND name = \"John\" AND email = \"John\" AND status = \"active\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age >= 18 AND name = \"John\" AND email = \"John\" AND status = \"active\")", int64(0), nil).Return().Once()
+
+		err := query.Where("age >= ?", 18).WhereAll([]string{"name", "email"}, "=", "John").Where("status = ?", "active").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("Where before and after WhereAll with greater than operator", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age >= ? AND score > ? AND points > ? AND status = ?)", 18, 100, 100, "active").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age >= ? AND score > ? AND points > ? AND status = ?)", 18, 100, 100, "active").Return("SELECT * FROM users WHERE (age >= 18 AND score > 100 AND points > 100 AND status = \"active\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age >= 18 AND score > 100 AND points > 100 AND status = \"active\")", int64(0), nil).Return().Once()
+
+		err := query.Where("age >= ?", 18).WhereAll([]string{"score", "points"}, ">", 100).Where("status = ?", "active").Get(&users)
+		s.Nil(err)
+	})
+}
+
+func (s *QueryTestSuite) TestWhereNone() {
+	s.Run("equals operator", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE name <> ? AND email <> ?", "John", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE name <> ? AND email <> ?", "John", "John").Return("SELECT * FROM users WHERE name <> \"John\" AND email <> \"John\"").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE name <> \"John\" AND email <> \"John\"", int64(0), nil).Return().Once()
+
+		err := query.WhereNone([]string{"name", "email"}, "=", "John").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("greater than operator", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE NOT (age > ?) AND NOT (score > ?)", 18, 18).Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE NOT (age > ?) AND NOT (score > ?)", 18, 18).Return("SELECT * FROM users WHERE NOT (age > 18) AND NOT (score > 18)").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE NOT (age > 18) AND NOT (score > 18)", int64(0), nil).Return().Once()
+
+		err := query.WhereNone([]string{"age", "score"}, ">", 18).Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("combined with Where clause", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age = ? AND name <> ? AND email <> ?)", 10, "John", "John").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age = ? AND name <> ? AND email <> ?)", 10, "John", "John").Return("SELECT * FROM users WHERE (age = 10 AND name <> \"John\" AND email <> \"John\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age = 10 AND name <> \"John\" AND email <> \"John\")", int64(0), nil).Return().Once()
+
+		err := query.Where("age = ?", 10).WhereNone([]string{"name", "email"}, "=", "John").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("Where before and after WhereNone", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age >= ? AND name <> ? AND email <> ? AND status = ?)", 18, "John", "John", "active").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age >= ? AND name <> ? AND email <> ? AND status = ?)", 18, "John", "John", "active").Return("SELECT * FROM users WHERE (age >= 18 AND name <> \"John\" AND email <> \"John\" AND status = \"active\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age >= 18 AND name <> \"John\" AND email <> \"John\" AND status = \"active\")", int64(0), nil).Return().Once()
+
+		err := query.Where("age >= ?", 18).WhereNone([]string{"name", "email"}, "=", "John").Where("status = ?", "active").Get(&users)
+		s.Nil(err)
+	})
+
+	s.Run("Where before and after WhereNone with greater than operator", func() {
+		var users []TestUser
+		query := NewQuery(s.ctx, s.mockReadBuilder, s.mockWriteBuilder, s.mockGrammar, s.mockLogger, "users", nil)
+
+		s.mockGrammar.EXPECT().CompilePlaceholderFormat().Return(nil).Once()
+		s.mockReadBuilder.EXPECT().SelectContext(s.ctx, &users, "SELECT * FROM users WHERE (age >= ? AND NOT (score > ?) AND NOT (points > ?) AND status = ?)", 18, 100, 100, "active").Return(nil).Once()
+		s.mockReadBuilder.EXPECT().Explain("SELECT * FROM users WHERE (age >= ? AND NOT (score > ?) AND NOT (points > ?) AND status = ?)", 18, 100, 100, "active").Return("SELECT * FROM users WHERE (age >= 18 AND NOT (score > 100) AND NOT (points > 100) AND status = \"active\")").Once()
+		s.mockLogger.EXPECT().Trace(s.ctx, s.now, "SELECT * FROM users WHERE (age >= 18 AND NOT (score > 100) AND NOT (points > 100) AND status = \"active\")", int64(0), nil).Return().Once()
+
+		err := query.Where("age >= ?", 18).WhereNone([]string{"score", "points"}, ">", 100).Where("status = ?", "active").Get(&users)
+		s.Nil(err)
+	})
 }
 
 // MockResult implements sql.Result interface for testing

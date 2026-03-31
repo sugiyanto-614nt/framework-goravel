@@ -3,7 +3,13 @@ package db
 import (
 	"github.com/jmoiron/sqlx"
 	"gorm.io/gorm"
+
+	"github.com/goravel/framework/support/str"
 )
+
+var NameMapper = func(s string) string {
+	return str.Of(s).Snake().String()
+}
 
 type Builder struct {
 	*sqlx.DB
@@ -17,6 +23,11 @@ func NewBuilder(gormDB *gorm.DB, driver string) (*Builder, error) {
 	}
 
 	dbx := sqlx.NewDb(db, driver)
+
+	// When running a migration to add columns, sqlx will panic if the struct has no fields that do not map to the database columns.
+	// So we need to enable Unsafe mode to avoid this error.
+	dbx = dbx.Unsafe()
+	dbx.MapperFunc(NameMapper)
 
 	return &Builder{
 		DB:     dbx,
@@ -40,6 +51,7 @@ func NewTxBuilder(gormDB *gorm.DB, driver string) (*TxBuilder, error) {
 	}
 
 	dbx := sqlx.NewDb(db, driver)
+	dbx.MapperFunc(NameMapper)
 	tx, err := dbx.Beginx()
 	if err != nil {
 		return nil, err

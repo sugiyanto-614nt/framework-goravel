@@ -1,7 +1,7 @@
 package mail
 
 import (
-	"github.com/goravel/framework/contracts"
+	"github.com/goravel/framework/contracts/binding"
 	contractsconsole "github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/foundation"
 	contractsqueue "github.com/goravel/framework/contracts/queue"
@@ -10,13 +10,21 @@ import (
 	"github.com/goravel/framework/support/color"
 )
 
-const Binding = "goravel.mail"
-
 type ServiceProvider struct {
 }
 
+func (r *ServiceProvider) Relationship() binding.Relationship {
+	return binding.Relationship{
+		Bindings: []string{
+			binding.Mail,
+		},
+		Dependencies: binding.Bindings[binding.Mail].Dependencies,
+		ProvideFor:   []string{},
+	}
+}
+
 func (r *ServiceProvider) Register(app foundation.Application) {
-	app.Bind(contracts.BindingMail, func(app foundation.Application) (any, error) {
+	app.Bind(binding.Mail, func(app foundation.Application) (any, error) {
 		config := app.MakeConfig()
 		if config == nil {
 			return nil, errors.ConfigFacadeNotSet.SetModule(errors.ModuleMail)
@@ -27,7 +35,7 @@ func (r *ServiceProvider) Register(app foundation.Application) {
 			return nil, errors.QueueFacadeNotSet.SetModule(errors.ModuleMail)
 		}
 
-		return NewApplication(config, queue), nil
+		return NewApplication(config, queue)
 	})
 }
 

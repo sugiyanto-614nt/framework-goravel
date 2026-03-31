@@ -1,38 +1,32 @@
 package gorm
 
 import (
+	contractsdriver "github.com/goravel/framework/contracts/database/driver"
 	contractsorm "github.com/goravel/framework/contracts/database/orm"
 )
 
 type Conditions struct {
-	distinct      []any
-	groupBy       []string
-	having        *Having
-	join          []Join
-	limit         *int
-	lockForUpdate bool
-	model         any
-	offset        *int
-	omit          []string
-	order         []any
-	scopes        []func(contractsorm.Query) contractsorm.Query
-	selectColumns *Select
-	sharedLock    bool
-	table         *Table
-	where         []Where
-	with          []With
-	withoutEvents bool
-	withTrashed   bool
-}
-
-type Having struct {
-	query any
-	args  []any
-}
-
-type Join struct {
-	query string
-	args  []any
+	dest                any
+	model               any
+	having              *contractsdriver.Having
+	limit               *int
+	offset              *int
+	table               *Table
+	groupBy             []string
+	join                []contractsdriver.Join
+	omit                []string
+	order               []any
+	scopes              []func(contractsorm.Query) contractsorm.Query
+	selectColumns       []string
+	selectRaw           *Select
+	where               []contractsdriver.Where
+	with                []With
+	distinct            bool
+	lockForUpdate       bool
+	sharedLock          bool
+	withoutEvents       bool
+	withoutGlobalScopes []string
+	withTrashed         bool
 }
 
 type Select struct {
@@ -43,12 +37,6 @@ type Select struct {
 type Table struct {
 	name string
 	args []any
-}
-
-type Where struct {
-	query any
-	args  []any
-	or    bool
 }
 
 type With struct {

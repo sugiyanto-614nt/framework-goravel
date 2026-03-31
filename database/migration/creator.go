@@ -1,13 +1,14 @@
 package migration
 
 import (
+	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+	"go/format"
+	"text/template"
 
+	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support/carbon"
-	"github.com/goravel/framework/support/str"
+	"github.com/goravel/framework/support/path"
 )
 
 type Creator struct {
@@ -30,20 +31,39 @@ func (r *Creator) GetStub(table string, create bool) string {
 	return Stubs{}.Update()
 }
 
-// PopulateStub Populate the place-holders in the migration stub.
-func (r *Creator) PopulateStub(stub, signature, table string) string {
-	stub = strings.ReplaceAll(stub, "DummyMigration", str.Of(signature).Prepend("m_").Studly().String())
-	stub = strings.ReplaceAll(stub, "DummySignature", signature)
-	stub = strings.ReplaceAll(stub, "DummyTable", table)
+type StubData struct {
+	FacadesPackage string
+	FacadesImport  string
+	Package        string
+	SchemaFields   []string
+	Signature      string
+	StructName     string
+	Table          string
+}
 
-	return stub
+// PopulateStub Populate the place-holders in the migration stub.
+func (r *Creator) PopulateStub(stub string, data StubData) (string, error) {
+	tmpl, err := template.New("stub").Parse(stub)
+	if err != nil {
+		return "", errors.TemplateFailedToParse.Args(err)
+	}
+
+	var buf bytes.Buffer
+	if err = tmpl.Execute(&buf, data); err != nil {
+		return "", errors.TemplateFailedToExecute.Args(err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return "", errors.TemplateFailedToFormatGoCode.Args(err)
+	}
+
+	return string(formatted), nil
 }
 
 // GetPath Get the full path to the migration.
 func (r *Creator) GetPath(name string) string {
-	pwd, _ := os.Getwd()
-
-	return filepath.Join(pwd, "database", "migrations", name+".go")
+	return path.Migration(name + ".go")
 }
 
 // GetFileName Get the full path to the migration.

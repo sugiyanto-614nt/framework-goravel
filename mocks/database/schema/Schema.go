@@ -756,6 +756,54 @@ func (_c *Schema_GetIndexes_Call) RunAndReturn(run func(string) ([]driver.Index,
 	return _c
 }
 
+// GetModel provides a mock function with given fields: name
+func (_m *Schema) GetModel(name string) interface{} {
+	ret := _m.Called(name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetModel")
+	}
+
+	var r0 interface{}
+	if rf, ok := ret.Get(0).(func(string) interface{}); ok {
+		r0 = rf(name)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(interface{})
+		}
+	}
+
+	return r0
+}
+
+// Schema_GetModel_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetModel'
+type Schema_GetModel_Call struct {
+	*mock.Call
+}
+
+// GetModel is a helper method to define mock.On call
+//   - name string
+func (_e *Schema_Expecter) GetModel(name interface{}) *Schema_GetModel_Call {
+	return &Schema_GetModel_Call{Call: _e.mock.On("GetModel", name)}
+}
+
+func (_c *Schema_GetModel_Call) Run(run func(name string)) *Schema_GetModel_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string))
+	})
+	return _c
+}
+
+func (_c *Schema_GetModel_Call) Return(_a0 interface{}) *Schema_GetModel_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Schema_GetModel_Call) RunAndReturn(run func(string) interface{}) *Schema_GetModel_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetTableListing provides a mock function with no fields
 func (_m *Schema) GetTableListing() []string {
 	ret := _m.Called()
@@ -1390,6 +1438,51 @@ func (_c *Schema_Orm_Call) Return(_a0 orm.Orm) *Schema_Orm_Call {
 }
 
 func (_c *Schema_Orm_Call) RunAndReturn(run func() orm.Orm) *Schema_Orm_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Prune provides a mock function with no fields
+func (_m *Schema) Prune() error {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Prune")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// Schema_Prune_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Prune'
+type Schema_Prune_Call struct {
+	*mock.Call
+}
+
+// Prune is a helper method to define mock.On call
+func (_e *Schema_Expecter) Prune() *Schema_Prune_Call {
+	return &Schema_Prune_Call{Call: _e.mock.On("Prune")}
+}
+
+func (_c *Schema_Prune_Call) Run(run func()) *Schema_Prune_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *Schema_Prune_Call) Return(_a0 error) *Schema_Prune_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Schema_Prune_Call) RunAndReturn(run func() error) *Schema_Prune_Call {
 	_c.Call.Return(run)
 	return _c
 }

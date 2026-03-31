@@ -1,7 +1,7 @@
 package event
 
 import (
-	"github.com/goravel/framework/contracts"
+	"github.com/goravel/framework/contracts/binding"
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/foundation"
 	"github.com/goravel/framework/errors"
@@ -11,8 +11,18 @@ import (
 type ServiceProvider struct {
 }
 
+func (r *ServiceProvider) Relationship() binding.Relationship {
+	return binding.Relationship{
+		Bindings: []string{
+			binding.Event,
+		},
+		Dependencies: binding.Bindings[binding.Event].Dependencies,
+		ProvideFor:   []string{},
+	}
+}
+
 func (r *ServiceProvider) Register(app foundation.Application) {
-	app.Singleton(contracts.BindingEvent, func(app foundation.Application) (any, error) {
+	app.Singleton(binding.Event, func(app foundation.Application) (any, error) {
 		queueFacade := app.MakeQueue()
 		if queueFacade == nil {
 			return nil, errors.QueueFacadeNotSet.SetModule(errors.ModuleEvent)

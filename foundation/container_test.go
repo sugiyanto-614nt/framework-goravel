@@ -1,13 +1,17 @@
 package foundation
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/goravel/framework/contracts"
+	"github.com/goravel/framework/contracts/binding"
+	"github.com/goravel/framework/contracts/facades"
 	"github.com/goravel/framework/contracts/foundation"
+	"github.com/goravel/framework/support/color"
 )
 
 type ContainerTestSuite struct {
@@ -43,6 +47,15 @@ func (s *ContainerTestSuite) TestBind() {
 	default:
 		s.T().Errorf("error")
 	}
+}
+
+func (s *ContainerTestSuite) TestBindings() {
+	callback := func(app foundation.Application) (any, error) {
+		return 1, nil
+	}
+	s.container.Bind("Bind", callback)
+
+	s.ElementsMatch([]any{"Bind"}, s.container.Bindings())
 }
 
 func (s *ContainerTestSuite) TestBindWith() {
@@ -84,10 +97,10 @@ func (s *ContainerTestSuite) TestSingleton_Fresh() {
 	callback := func(app foundation.Application) (any, error) {
 		return 1, nil
 	}
-	s.container.Singleton(contracts.BindingConfig, callback)
+	s.container.Singleton(binding.Config, callback)
 	s.container.Singleton("Singleton", callback)
 
-	res, err := s.container.Make(contracts.BindingConfig)
+	res, err := s.container.Make(binding.Config)
 	s.Nil(err)
 	s.Equal(1, res)
 
@@ -105,7 +118,7 @@ func (s *ContainerTestSuite) TestSingleton_Fresh() {
 	s.False(ok)
 	s.Nil(res)
 
-	res, ok = s.container.instances.Load(contracts.BindingConfig)
+	res, ok = s.container.instances.Load(binding.Config)
 	s.True(ok)
 	s.Equal(1, res)
 
@@ -123,7 +136,7 @@ func (s *ContainerTestSuite) TestSingleton_Fresh() {
 	s.False(ok)
 	s.Nil(res)
 
-	res, ok = s.container.instances.Load(contracts.BindingConfig)
+	res, ok = s.container.instances.Load(binding.Config)
 	s.True(ok)
 	s.Equal(1, res)
 }
@@ -138,10 +151,10 @@ func (s *ContainerTestSuite) TestMake() {
 		expectErr  error
 	}{
 		{
-			name:      "not found binding",
+			name:      "not found Binding",
 			key:       "no",
 			setup:     func() {},
-			expectErr: fmt.Errorf("binding not found: %+v", "no"),
+			expectErr: NewBindingNotFoundError("no"),
 		},
 		{
 			name: "found Singleton",
@@ -195,6 +208,103 @@ func (s *ContainerTestSuite) TestMake() {
 			impl, err := s.container.make(test.key, test.parameters)
 			s.Equal(test.expectImpl, impl)
 			s.Equal(test.expectErr, err)
+		})
+	}
+}
+
+func (s *ContainerTestSuite) TestMakeWrappers_SuppressBindingNotFoundError() {
+	tests := []struct {
+		name string
+		run  func(container *Container) any
+	}{
+		{name: "ai", run: func(container *Container) any { return container.MakeAI() }},
+		{name: "artisan", run: func(container *Container) any { return container.MakeArtisan() }},
+		{name: "auth", run: func(container *Container) any { return container.MakeAuth() }},
+		{name: "cache", run: func(container *Container) any { return container.MakeCache() }},
+		{name: "config", run: func(container *Container) any { return container.MakeConfig() }},
+		{name: "crypt", run: func(container *Container) any { return container.MakeCrypt() }},
+		{name: "db", run: func(container *Container) any { return container.MakeDB() }},
+		{name: "event", run: func(container *Container) any { return container.MakeEvent() }},
+		{name: "gate", run: func(container *Container) any { return container.MakeGate() }},
+		{name: "grpc", run: func(container *Container) any { return container.MakeGrpc() }},
+		{name: "hash", run: func(container *Container) any { return container.MakeHash() }},
+		{name: "http", run: func(container *Container) any { return container.MakeHttp() }},
+		{name: "lang", run: func(container *Container) any { return container.MakeLang(context.Background()) }},
+		{name: "log", run: func(container *Container) any { return container.MakeLog() }},
+		{name: "mail", run: func(container *Container) any { return container.MakeMail() }},
+		{name: "orm", run: func(container *Container) any { return container.MakeOrm() }},
+		{name: "process", run: func(container *Container) any { return container.MakeProcess() }},
+		{name: "queue", run: func(container *Container) any { return container.MakeQueue() }},
+		{name: "rate_limiter", run: func(container *Container) any { return container.MakeRateLimiter() }},
+		{name: "route", run: func(container *Container) any { return container.MakeRoute() }},
+		{name: "schedule", run: func(container *Container) any { return container.MakeSchedule() }},
+		{name: "schema", run: func(container *Container) any { return container.MakeSchema() }},
+		{name: "seeder", run: func(container *Container) any { return container.MakeSeeder() }},
+		{name: "session", run: func(container *Container) any { return container.MakeSession() }},
+		{name: "storage", run: func(container *Container) any { return container.MakeStorage() }},
+		{name: "telemetry", run: func(container *Container) any { return container.MakeTelemetry() }},
+		{name: "testing", run: func(container *Container) any { return container.MakeTesting() }},
+		{name: "validation", run: func(container *Container) any { return container.MakeValidation() }},
+		{name: "view", run: func(container *Container) any { return container.MakeView() }},
+	}
+
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			container := NewContainer()
+			output := color.CaptureOutput(func(_ io.Writer) {
+				s.Nil(test.run(container))
+			})
+
+			s.Equal("", output)
+		})
+	}
+}
+
+func (s *ContainerTestSuite) TestMakeWrappers_LogNonBindingError() {
+	tests := []struct {
+		name      string
+		setup     func(container *Container) error
+		run       func(container *Container) any
+		expectErr string
+	}{
+		{
+			name: "make callback returns error",
+			setup: func(container *Container) error {
+				expectedErr := fmt.Errorf("make callback error")
+				container.Bind(facades.FacadeToBinding[facades.AI], func(app foundation.Application) (any, error) {
+					return nil, expectedErr
+				})
+
+				return expectedErr
+			},
+			run:       func(container *Container) any { return container.MakeAI() },
+			expectErr: "make callback error",
+		},
+		{
+			name: "make with callback returns error",
+			setup: func(container *Container) error {
+				expectedErr := fmt.Errorf("make with callback error")
+				container.BindWith(facades.FacadeToBinding[facades.Auth], func(app foundation.Application, parameters map[string]any) (any, error) {
+					return nil, expectedErr
+				})
+
+				return expectedErr
+			},
+			run:       func(container *Container) any { return container.MakeAuth() },
+			expectErr: "make with callback error",
+		},
+	}
+
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			container := NewContainer()
+			expectedErr := test.setup(container)
+			output := color.CaptureOutput(func(_ io.Writer) {
+				s.Nil(test.run(container))
+			})
+
+			s.Contains(output, expectedErr.Error())
+			s.Contains(output, test.expectErr)
 		})
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	contractsqueue "github.com/goravel/framework/contracts/queue"
 	"github.com/goravel/framework/errors"
+	mockscache "github.com/goravel/framework/mocks/cache"
 	mocksdb "github.com/goravel/framework/mocks/database/db"
 	mocksfoundation "github.com/goravel/framework/mocks/foundation"
 	mocksqueue "github.com/goravel/framework/mocks/queue"
@@ -14,6 +15,7 @@ import (
 
 type DriverCreatorTestSuite struct {
 	suite.Suite
+	mockCache     *mockscache.Cache
 	mockConfig    *mocksqueue.Config
 	mockDB        *mocksdb.DB
 	mockJobStorer *mocksqueue.JobStorer
@@ -26,11 +28,13 @@ func TestDriverCreatorTestSuite(t *testing.T) {
 }
 
 func (s *DriverCreatorTestSuite) SetupTest() {
+	s.mockCache = mockscache.NewCache(s.T())
 	s.mockConfig = mocksqueue.NewConfig(s.T())
 	s.mockDB = mocksdb.NewDB(s.T())
 	s.mockJobStorer = mocksqueue.NewJobStorer(s.T())
 	s.mockJson = mocksfoundation.NewJson(s.T())
 	s.driverCreator = &DriverCreator{
+		cache:     s.mockCache,
 		config:    s.mockConfig,
 		db:        s.mockDB,
 		jobStorer: s.mockJobStorer,
@@ -39,9 +43,10 @@ func (s *DriverCreatorTestSuite) SetupTest() {
 }
 
 func (s *DriverCreatorTestSuite) TestNewDriverCreator() {
-	creator := NewDriverCreator(s.mockConfig, s.mockDB, s.mockJobStorer, s.mockJson, nil)
+	creator := NewDriverCreator(s.mockConfig, s.mockCache, s.mockDB, s.mockJobStorer, s.mockJson, nil)
 	s.NotNil(creator)
 	s.Equal(s.mockConfig, creator.config)
+	s.Equal(s.mockCache, creator.cache)
 	s.Equal(s.mockDB, creator.db)
 	s.Equal(s.mockJobStorer, creator.jobStorer)
 	s.Equal(s.mockJson, creator.json)
@@ -86,22 +91,6 @@ func (s *DriverCreatorTestSuite) TestCreate() {
 				s.mockConfig.EXPECT().Driver("database").Return(contractsqueue.DriverDatabase).Once()
 			},
 			expectedErr: errors.QueueInvalidDatabaseConnection.Args("database"),
-		},
-		{
-			name:       "machinery driver",
-			connection: "machinery",
-			driver:     contractsqueue.DriverMachinery,
-			setup: func() {
-				s.mockConfig.EXPECT().Driver("machinery").Return(contractsqueue.DriverMachinery).Once()
-				s.mockConfig.EXPECT().GetString("queue.connections.machinery.connection").Return("redis").Once()
-				s.mockConfig.EXPECT().GetString("database.redis.redis.host").Return("localhost").Once()
-				s.mockConfig.EXPECT().GetString("database.redis.redis.password").Return("").Once()
-				s.mockConfig.EXPECT().GetInt("database.redis.redis.port").Return(6379).Once()
-				s.mockConfig.EXPECT().GetInt("database.redis.redis.database").Return(0).Once()
-				s.mockConfig.EXPECT().GetString("app.name").Return("goravel").Once()
-				s.mockConfig.EXPECT().GetBool("app.debug").Return(false).Once()
-			},
-			expectedErr: nil,
 		},
 		{
 			name:       "custom driver - success with driver instance",

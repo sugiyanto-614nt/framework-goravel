@@ -1,27 +1,50 @@
 package driver
 
 import (
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 	"gorm.io/plugin/dbresolver"
 
 	"github.com/goravel/framework/contracts/config"
 	"github.com/goravel/framework/contracts/database"
-	"github.com/goravel/framework/contracts/log"
-	"github.com/goravel/framework/database/logger"
 	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support/carbon"
+	"github.com/goravel/framework/support/color"
 )
 
-func BuildGorm(config config.Config, log log.Log, pool database.Pool) (*gorm.DB, error) {
+var (
+	connectionToDB     sync.Map
+	connectionToDBLock sync.Mutex
+	pingWarning        sync.Once
+)
+
+func BuildGorm(config config.Config, logger logger.Interface, pool database.Pool, connection string) (*gorm.DB, error) {
+	if db, ok := connectionToDB.Load(connection); ok {
+		return db.(*gorm.DB), nil
+	}
+
 	if len(pool.Writers) == 0 {
 		return nil, errors.DatabaseConfigNotFound
 	}
 
-	logger := logger.NewLogger(config, log).ToGorm()
+	// If the database is empty, it means the database is not configured, we don't want to return an error or print a warning here.
+	if pool.Writers[0].Database == "" {
+		return nil, nil
+	}
+
+	connectionToDBLock.Lock()
+	defer connectionToDBLock.Unlock()
+
+	if db, ok := connectionToDB.Load(connection); ok {
+		return db.(*gorm.DB), nil
+	}
+
 	gormConfig := &gorm.Config{
+		DisableAutomaticPing:                     true,
 		DisableForeignKeyConstraintWhenMigrating: true,
 		SkipDefaultTransaction:                   true,
 		Logger:                                   logger,
@@ -40,6 +63,13 @@ func BuildGorm(config config.Config, log log.Log, pool database.Pool) (*gorm.DB,
 	if err != nil {
 		return nil, err
 	}
+	if pinger, ok := instance.ConnPool.(interface{ Ping() error }); ok {
+		if err = pinger.Ping(); err != nil {
+			pingWarning.Do(func() {
+				color.Warningln(err.Error())
+			})
+		}
+	}
 
 	maxIdleConns := config.GetInt("database.pool.max_idle_conns", 10)
 	maxOpenConns := config.GetInt("database.pool.max_open_conns", 100)
@@ -56,6 +86,8 @@ func BuildGorm(config config.Config, log log.Log, pool database.Pool) (*gorm.DB,
 		db.SetMaxOpenConns(maxOpenConns)
 		db.SetConnMaxIdleTime(connMaxIdleTime * time.Second)
 		db.SetConnMaxLifetime(connMaxLifetime * time.Second)
+
+		connectionToDB.Store(connection, instance)
 
 		return instance, nil
 	}
@@ -85,5 +117,17 @@ func BuildGorm(config config.Config, log log.Log, pool database.Pool) (*gorm.DB,
 		return nil, err
 	}
 
+	connectionToDB.Store(connection, instance)
+
 	return instance, nil
+}
+
+func ResetConnections() {
+	connectionToDBLock.Lock()
+	defer connectionToDBLock.Unlock()
+
+	connectionToDB.Range(func(key, value any) bool {
+		connectionToDB.Delete(key)
+		return true
+	})
 }

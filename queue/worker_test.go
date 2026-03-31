@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	contractsqueue "github.com/goravel/framework/contracts/queue"
@@ -52,6 +53,7 @@ func (s *WorkerTestSuite) SetupTest() {
 		connection: "sync",
 		queue:      "default",
 		concurrent: 1,
+		tries:      1,
 		debug:      true,
 
 		currentDelay:  1 * time.Second,
@@ -64,7 +66,7 @@ func (s *WorkerTestSuite) TestNewWorker() {
 	s.Run("happy path", func() {
 		s.mockConfig.EXPECT().Driver("sync").Return(contractsqueue.DriverSync).Once()
 		s.mockConfig.EXPECT().Debug().Return(true).Once()
-		worker, err := NewWorker(s.mockConfig, s.mockDB, s.mockJob, s.mockJson, s.mockLog, "sync", "default", 2)
+		worker, err := NewWorker(s.mockConfig, nil, s.mockDB, s.mockJob, s.mockJson, s.mockLog, "sync", "default", 2, 1)
 
 		s.NotNil(worker)
 		s.NoError(err)
@@ -72,7 +74,7 @@ func (s *WorkerTestSuite) TestNewWorker() {
 
 	s.Run("failed to create driver", func() {
 		s.mockConfig.EXPECT().Driver("sync").Return("unknown").Once()
-		worker, err := NewWorker(s.mockConfig, s.mockDB, s.mockJob, s.mockJson, s.mockLog, "sync", "default", 2)
+		worker, err := NewWorker(s.mockConfig, nil, s.mockDB, s.mockJob, s.mockJson, s.mockLog, "sync", "default", 2, 1)
 		s.Nil(worker)
 		s.Equal(errors.QueueDriverNotSupported.Args("unknown"), err)
 	})
@@ -217,6 +219,7 @@ func (s *WorkerTestSuite) Test_run() {
 	testJobErr := &TestJobErr{}
 	testJobOne := &TestJobOne{}
 	testJobTwo := &TestJobTwo{}
+	testJobRetry := &TestJobRetry{}
 
 	errorTask := contractsqueue.Task{
 		ChainJob: contractsqueue.ChainJob{
@@ -327,7 +330,7 @@ func (s *WorkerTestSuite) Test_run() {
 		mockQuery := mocksdb.NewQuery(s.T())
 		s.mockDB.EXPECT().Table("failed_jobs").Return(mockQuery).Once()
 		mockQuery.EXPECT().Insert(failedJob).Return(nil, assert.AnError).Once()
-		s.mockLog.EXPECT().Error(errors.QueueFailedToSaveFailedJob.Args(assert.AnError, failedJob)).Once()
+		s.mockLog.EXPECT().Error(errors.QueueFailedToSaveFailedJob.Args(assert.AnError, *failedJob)).Once()
 
 		go func() {
 			err := s.worker.run()
@@ -484,6 +487,132 @@ func (s *WorkerTestSuite) Test_run() {
 
 		s.NoError(s.worker.Shutdown())
 	})
+
+	s.Run("retry job failed, insert failed job", func() {
+		s.SetupTest()
+
+		args := []contractsqueue.Arg{
+			{
+				Type:  "string",
+				Value: "test",
+			},
+		}
+		errorTaskWithChain := contractsqueue.Task{
+			ChainJob: contractsqueue.ChainJob{
+				Job: testJobOne,
+			},
+			UUID: "test",
+			Chain: []contractsqueue.ChainJob{
+				{
+					Job: testJobErr,
+					Args: []contractsqueue.Arg{
+						{
+							Type:  "string",
+							Value: "test",
+						},
+					},
+				},
+			},
+		}
+
+		// run
+		mockReservedJob := mocksqueue.NewReservedJob(s.T())
+		s.mockDriver.EXPECT().Pop(queue).Return(mockReservedJob, nil).Once()
+		mockReservedJob.EXPECT().Task().Return(errorTaskWithChain).Once()
+
+		// call
+		s.mockJob.EXPECT().Call(errorTaskWithChain.Job.Signature(), make([]any, 0)).Return(nil).Once()
+		s.mockJob.EXPECT().Call(errorTaskWithChain.Chain[0].Job.Signature(), utils.ConvertArgs(args)).Return(assert.AnError).Twice()
+		s.mockJson.EXPECT().MarshalString(utils.Task{
+			Job: utils.Job{
+				Signature: errorTaskWithChain.Chain[0].Job.Signature(),
+				Args:      args,
+			},
+			UUID: "test",
+		}).Return("{\"signature\":\"test_job_err\",\"args\":[{\"type\":\"string\",\"value\":\"test\"}],\"delay\":null,\"uuid\":\"test\",\"chain\":[]}", nil).Once()
+
+		// run
+		mockReservedJob.EXPECT().Delete().Return(nil).Once()
+		s.mockDriver.EXPECT().Pop(queue).Return(nil, errors.QueueDriverNoJobFound)
+
+		// logFailedJob
+		s.mockConfig.EXPECT().FailedDatabase().Return("mysql").Once()
+		s.mockConfig.EXPECT().FailedTable().Return("failed_jobs").Once()
+		s.mockDB.EXPECT().Connection("mysql").Return(s.mockDB).Once()
+		mockQuery := mocksdb.NewQuery(s.T())
+		s.mockDB.EXPECT().Table("failed_jobs").Return(mockQuery).Once()
+		mockQuery.EXPECT().Insert(&models.FailedJob{
+			UUID:       errorTaskWithChain.UUID,
+			Connection: connection,
+			Queue:      queue,
+			Payload:    "{\"signature\":\"test_job_err\",\"args\":[{\"type\":\"string\",\"value\":\"test\"}],\"delay\":null,\"uuid\":\"test\",\"chain\":[]}",
+			Exception:  assert.AnError.Error(),
+			FailedAt:   carbon.NewDateTime(carbon.Now()),
+		}).Return(nil, nil).Once()
+
+		go func() {
+			s.worker.tries = 2 // Set tries to 2 for retry
+			err := s.worker.run()
+			s.NoError(err)
+		}()
+
+		time.Sleep(500 * time.Millisecond)
+
+		s.NoError(s.worker.Shutdown())
+		s.worker.tries = 1
+	})
+
+	s.Run("retry job success", func() {
+		s.SetupTest()
+
+		args := []contractsqueue.Arg{
+			{
+				Type:  "string",
+				Value: "test",
+			},
+		}
+		errorTaskWithChain := contractsqueue.Task{
+			ChainJob: contractsqueue.ChainJob{
+				Job: testJobOne,
+			},
+			UUID: "test",
+			Chain: []contractsqueue.ChainJob{
+				{
+					Job: testJobRetry,
+					Args: []contractsqueue.Arg{
+						{
+							Type:  "string",
+							Value: "test",
+						},
+					},
+				},
+			},
+		}
+
+		// run
+		mockReservedJob := mocksqueue.NewReservedJob(s.T())
+		s.mockDriver.EXPECT().Pop(queue).Return(mockReservedJob, nil).Once()
+		mockReservedJob.EXPECT().Task().Return(errorTaskWithChain).Once()
+
+		// call
+		s.mockJob.EXPECT().Call(errorTaskWithChain.Job.Signature(), make([]any, 0)).Return(nil).Once()
+		s.mockJob.EXPECT().Call(errorTaskWithChain.Chain[0].Job.Signature(), utils.ConvertArgs(args)).Return(assert.AnError).Twice().Return(nil).Once()
+
+		// run
+		mockReservedJob.EXPECT().Delete().Return(nil).Once()
+		s.mockDriver.EXPECT().Pop(queue).Return(nil, errors.QueueDriverNoJobFound)
+
+		go func() {
+			s.worker.tries = 3 // Set tries to 3 for retry
+			err := s.worker.run()
+			s.NoError(err)
+		}()
+
+		time.Sleep(500 * time.Millisecond)
+
+		s.NoError(s.worker.Shutdown())
+		s.worker.tries = 1
+	})
 }
 
 func (s *WorkerTestSuite) TestRunWithSyncDriver() {
@@ -494,9 +623,242 @@ func (s *WorkerTestSuite) TestRunWithSyncDriver() {
 }
 
 func (s *WorkerTestSuite) TestShutdown() {
-	s.worker.isShutdown.Store(false)
+	s.Run("shutdown without running workers", func() {
+		s.SetupTest()
+		s.worker.isShutdown.Store(false)
 
-	err := s.worker.Shutdown()
-	s.NoError(err)
-	s.True(s.worker.isShutdown.Load())
+		err := s.worker.Shutdown()
+		s.NoError(err)
+		s.True(s.worker.isShutdown.Load())
+	})
+
+	s.Run("shutdown blocks until goroutines complete", func() {
+		s.SetupTest()
+
+		// Return no jobs so workers will poll and eventually exit
+		s.mockDriver.EXPECT().Pop(s.worker.queue).Return(nil, errors.QueueDriverNoJobFound).Once()
+
+		// Start the worker
+		go func() {
+			s.NoError(s.worker.run())
+		}()
+
+		// Give worker time to start
+		time.Sleep(100 * time.Millisecond)
+
+		// Call shutdown - it should wait for WaitGroup
+		start := time.Now()
+		err := s.worker.Shutdown()
+		duration := time.Since(start)
+
+		s.NoError(err)
+		s.True(s.worker.isShutdown.Load())
+		// Shutdown should have waited for goroutines (at least a little time)
+		s.Greater(duration, 0*time.Millisecond)
+	})
+
+	s.Run("shutdown waits for job to complete", func() {
+		s.SetupTest()
+
+		successTask := contractsqueue.Task{
+			ChainJob: contractsqueue.ChainJob{
+				Job: &TestJobOne{},
+			},
+			UUID: "test-success",
+		}
+
+		mockReservedJob := mocksqueue.NewReservedJob(s.T())
+		s.mockDriver.EXPECT().Pop(s.worker.queue).Return(mockReservedJob, nil).Once()
+		mockReservedJob.EXPECT().Task().Return(successTask).Once()
+
+		called := false
+		s.mockJob.EXPECT().Call(successTask.Job.Signature(), make([]any, 0)).RunAndReturn(func(s string, i []any) error {
+			time.Sleep(200 * time.Millisecond)
+			called = true
+
+			return nil
+		}).Once()
+		mockReservedJob.EXPECT().Delete().Return(nil).Once()
+
+		// Start the worker
+		go func() {
+			s.NoError(s.worker.run())
+		}()
+
+		// Give worker time to start processing
+		time.Sleep(100 * time.Millisecond)
+
+		// Shutdown should wait for the job to complete
+		err := s.worker.Shutdown()
+		s.NoError(err)
+		s.True(called)
+	})
+
+	s.Run("shutdown waits for failed job logging", func() {
+		s.SetupTest()
+
+		errorTask := contractsqueue.Task{
+			ChainJob: contractsqueue.ChainJob{
+				Job: &TestJobErr{},
+			},
+			UUID: "test-error",
+		}
+
+		mockReservedJob := mocksqueue.NewReservedJob(s.T())
+		s.mockDriver.EXPECT().Pop(s.worker.queue).Return(mockReservedJob, nil).Once()
+		mockReservedJob.EXPECT().Task().Return(errorTask).Once()
+
+		s.mockJob.EXPECT().Call(errorTask.Job.Signature(), make([]any, 0)).Return(assert.AnError).Once()
+		s.mockJson.EXPECT().MarshalString(utils.Task{
+			Job: utils.Job{
+				Signature: errorTask.Job.Signature(),
+			},
+			UUID: "test-error",
+		}).Return("{\"signature\":\"test_job_err\",\"args\":null,\"delay\":null,\"uuid\":\"test-error\",\"chain\":[]}", nil).Once()
+
+		mockReservedJob.EXPECT().Delete().Return(nil).Once()
+		s.mockDriver.EXPECT().Pop(s.worker.queue).Return(nil, errors.QueueDriverNoJobFound).Once()
+
+		// Mock failed job logging
+		s.mockConfig.EXPECT().FailedDatabase().Return("mysql").Once()
+		s.mockConfig.EXPECT().FailedTable().Return("failed_jobs").Once()
+		s.mockDB.EXPECT().Connection("mysql").Return(s.mockDB).Once()
+		mockQuery := mocksdb.NewQuery(s.T())
+		s.mockDB.EXPECT().Table("failed_jobs").Return(mockQuery).Once()
+		mockQuery.EXPECT().Insert(matchFailedJob("test-error")).Return(nil, nil).Once()
+
+		// Start the worker
+		go func() {
+			s.NoError(s.worker.run())
+		}()
+
+		// Give worker time to process the failed job
+		time.Sleep(200 * time.Millisecond)
+
+		// Shutdown should wait for failed job logger goroutine
+		err := s.worker.Shutdown()
+		s.NoError(err)
+	})
+
+	s.Run("shutdown when a task is running but fails finally", func() {
+		s.SetupTest()
+
+		errorTask := contractsqueue.Task{
+			ChainJob: contractsqueue.ChainJob{
+				Job: &TestJobErr{},
+			},
+			UUID: "test-error",
+		}
+
+		mockReservedJob := mocksqueue.NewReservedJob(s.T())
+		s.mockDriver.EXPECT().Pop(s.worker.queue).Return(mockReservedJob, nil).Once()
+		mockReservedJob.EXPECT().Task().Return(errorTask).Once()
+
+		s.mockJob.EXPECT().Call(errorTask.Job.Signature(), make([]any, 0)).RunAndReturn(func(s string, i []any) error {
+			time.Sleep(500 * time.Millisecond)
+
+			return assert.AnError
+		}).Once()
+		s.mockJson.EXPECT().MarshalString(utils.Task{
+			Job: utils.Job{
+				Signature: errorTask.Job.Signature(),
+			},
+			UUID: "test-error",
+		}).Return("{\"signature\":\"test_job_err\",\"args\":null,\"delay\":null,\"uuid\":\"test-error\",\"chain\":[]}", nil).Once()
+
+		mockReservedJob.EXPECT().Delete().Return(nil).Once()
+
+		// Mock failed job logging
+		s.mockConfig.EXPECT().FailedDatabase().Return("mysql").Once()
+		s.mockConfig.EXPECT().FailedTable().Return("failed_jobs").Once()
+		s.mockDB.EXPECT().Connection("mysql").Return(s.mockDB).Once()
+		mockQuery := mocksdb.NewQuery(s.T())
+		s.mockDB.EXPECT().Table("failed_jobs").Return(mockQuery).Once()
+		mockQuery.EXPECT().Insert(matchFailedJob("test-error")).Return(nil, nil).Once()
+
+		// Start the worker
+		go func() {
+			s.NoError(s.worker.run())
+		}()
+
+		// Give worker time to process the failed job
+		time.Sleep(200 * time.Millisecond)
+
+		// Shutdown should wait for failed job logger goroutine
+		err := s.worker.Shutdown()
+		s.NoError(err)
+	})
+
+	s.Run("shutdown with multiple jobs", func() {
+		s.SetupTest()
+		s.worker.concurrent = 2
+
+		task1 := contractsqueue.Task{
+			ChainJob: contractsqueue.ChainJob{Job: &TestJobOne{}},
+			UUID:     "test-1",
+		}
+		task2 := contractsqueue.Task{
+			ChainJob: contractsqueue.ChainJob{Job: &TestJobTwo{}},
+			UUID:     "test-2",
+		}
+
+		// Set up mock expectations for both tasks
+		mockReservedJob1 := mocksqueue.NewReservedJob(s.T())
+		mockReservedJob2 := mocksqueue.NewReservedJob(s.T())
+
+		s.mockDriver.EXPECT().Pop(s.worker.queue).Return(mockReservedJob1, nil).Once()
+		s.mockDriver.EXPECT().Pop(s.worker.queue).Return(mockReservedJob2, nil).Once()
+
+		mockReservedJob1.EXPECT().Task().Return(task1).Once()
+		mockReservedJob2.EXPECT().Task().Return(task2).Once()
+
+		s.mockJob.EXPECT().Call(task1.Job.Signature(), make([]any, 0)).Return(nil).Once()
+		s.mockJob.EXPECT().Call(task2.Job.Signature(), make([]any, 0)).Return(nil).Once()
+
+		mockReservedJob1.EXPECT().Delete().Return(nil).Once()
+		mockReservedJob2.EXPECT().Delete().Return(nil).Once()
+
+		s.mockDriver.EXPECT().Pop(s.worker.queue).Return(nil, errors.QueueDriverNoJobFound).Twice()
+
+		// Start the worker
+		go func() {
+			s.NoError(s.worker.run())
+		}()
+
+		// Give workers time to process
+		time.Sleep(200 * time.Millisecond)
+
+		// Shutdown should wait for all workers to complete
+		err := s.worker.Shutdown()
+		s.NoError(err)
+	})
+}
+
+// matchFailedJob is a helper to match FailedJob with specific UUID
+func matchFailedJob(uuid string) interface{} {
+	return mock.MatchedBy(func(job *models.FailedJob) bool {
+		return job.UUID == uuid
+	})
+}
+
+type TestJobRetry struct {
+	attempt int
+}
+
+// Signature The name and signature of the job.
+func (r *TestJobRetry) Signature() string {
+	return "test_job_retry"
+}
+
+// Handle Execute the job.
+func (r *TestJobRetry) Handle(args ...any) error {
+	if r.attempt > 2 {
+		return nil
+	}
+	return assert.AnError
+}
+
+func (r *TestJobRetry) ShouldRetry(err error, attempt int) (bool, time.Duration) {
+	r.attempt = attempt
+	return true, 0
 }

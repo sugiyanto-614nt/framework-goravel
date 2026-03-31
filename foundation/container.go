@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/goravel/framework/contracts"
+	contractsai "github.com/goravel/framework/contracts/ai"
 	contractsauth "github.com/goravel/framework/contracts/auth"
 	contractsaccess "github.com/goravel/framework/contracts/auth/access"
+	"github.com/goravel/framework/contracts/binding"
 	contractscache "github.com/goravel/framework/contracts/cache"
 	contractsconfig "github.com/goravel/framework/contracts/config"
 	contractsconsole "github.com/goravel/framework/contracts/console"
@@ -17,6 +18,7 @@ import (
 	contractsmigration "github.com/goravel/framework/contracts/database/schema"
 	contractsseerder "github.com/goravel/framework/contracts/database/seeder"
 	contractsevent "github.com/goravel/framework/contracts/event"
+	"github.com/goravel/framework/contracts/facades"
 	contractsfilesystem "github.com/goravel/framework/contracts/filesystem"
 	contractsfoundation "github.com/goravel/framework/contracts/foundation"
 	contractsgrpc "github.com/goravel/framework/contracts/grpc"
@@ -25,15 +27,31 @@ import (
 	contractshttpclient "github.com/goravel/framework/contracts/http/client"
 	contractslog "github.com/goravel/framework/contracts/log"
 	contractsmail "github.com/goravel/framework/contracts/mail"
+	contractsprocess "github.com/goravel/framework/contracts/process"
 	contractsqueue "github.com/goravel/framework/contracts/queue"
 	contractsroute "github.com/goravel/framework/contracts/route"
 	contractsschedule "github.com/goravel/framework/contracts/schedule"
 	contractsession "github.com/goravel/framework/contracts/session"
+	contractstelemetry "github.com/goravel/framework/contracts/telemetry"
 	contractstesting "github.com/goravel/framework/contracts/testing"
 	contractstranslation "github.com/goravel/framework/contracts/translation"
 	contractsvalidation "github.com/goravel/framework/contracts/validation"
+	contractsview "github.com/goravel/framework/contracts/view"
+	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support/color"
 )
+
+type BindingNotFoundError struct {
+	Key any
+}
+
+func NewBindingNotFoundError(key any) *BindingNotFoundError {
+	return &BindingNotFoundError{Key: key}
+}
+
+func (r *BindingNotFoundError) Error() string {
+	return fmt.Sprintf("binding not found: %+v", r.Key)
+}
 
 type instance struct {
 	concrete any
@@ -53,6 +71,15 @@ func (r *Container) Bind(key any, callback func(app contractsfoundation.Applicat
 	r.bindings.Store(key, instance{concrete: callback, shared: false})
 }
 
+func (r *Container) Bindings() []any {
+	var bindings []any
+	r.bindings.Range(func(key, value any) bool {
+		bindings = append(bindings, key)
+		return true
+	})
+	return bindings
+}
+
 func (r *Container) BindWith(key any, callback func(app contractsfoundation.Application, parameters map[string]any) (any, error)) {
 	r.bindings.Store(key, instance{concrete: callback, shared: false})
 }
@@ -60,7 +87,7 @@ func (r *Container) BindWith(key any, callback func(app contractsfoundation.Appl
 func (r *Container) Fresh(bindings ...any) {
 	if len(bindings) == 0 {
 		r.instances.Range(func(key, value any) bool {
-			if key != contracts.BindingConfig {
+			if key != binding.Config {
 				r.instances.Delete(key)
 			}
 
@@ -81,10 +108,20 @@ func (r *Container) Make(key any) (any, error) {
 	return r.make(key, nil)
 }
 
-func (r *Container) MakeArtisan() contractsconsole.Artisan {
-	instance, err := r.Make(contracts.BindingConsole)
+func (r *Container) MakeAI() contractsai.AI {
+	instance, err := r.Make(facades.FacadeToBinding[facades.AI])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
+		return nil
+	}
+
+	return instance.(contractsai.AI)
+}
+
+func (r *Container) MakeArtisan() contractsconsole.Artisan {
+	instance, err := r.Make(facades.FacadeToBinding[facades.Artisan])
+	if err != nil {
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -97,9 +134,9 @@ func (r *Container) MakeAuth(ctx ...contractshttp.Context) contractsauth.Auth {
 		parameters["ctx"] = ctx[0]
 	}
 
-	instance, err := r.MakeWith(contracts.BindingAuth, parameters)
+	instance, err := r.MakeWith(facades.FacadeToBinding[facades.Auth], parameters)
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 	if instance == nil {
@@ -110,9 +147,9 @@ func (r *Container) MakeAuth(ctx ...contractshttp.Context) contractsauth.Auth {
 }
 
 func (r *Container) MakeCache() contractscache.Cache {
-	instance, err := r.Make(contracts.BindingCache)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Cache])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -120,9 +157,9 @@ func (r *Container) MakeCache() contractscache.Cache {
 }
 
 func (r *Container) MakeConfig() contractsconfig.Config {
-	instance, err := r.Make(contracts.BindingConfig)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Config])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -130,9 +167,9 @@ func (r *Container) MakeConfig() contractsconfig.Config {
 }
 
 func (r *Container) MakeCrypt() contractscrypt.Crypt {
-	instance, err := r.Make(contracts.BindingCrypt)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Crypt])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -140,9 +177,9 @@ func (r *Container) MakeCrypt() contractscrypt.Crypt {
 }
 
 func (r *Container) MakeDB() contractsdb.DB {
-	instance, err := r.Make(contracts.BindingDB)
+	instance, err := r.Make(facades.FacadeToBinding[facades.DB])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 	if instance == nil {
@@ -153,9 +190,9 @@ func (r *Container) MakeDB() contractsdb.DB {
 }
 
 func (r *Container) MakeEvent() contractsevent.Instance {
-	instance, err := r.Make(contracts.BindingEvent)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Event])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -163,9 +200,9 @@ func (r *Container) MakeEvent() contractsevent.Instance {
 }
 
 func (r *Container) MakeGate() contractsaccess.Gate {
-	instance, err := r.Make(contracts.BindingGate)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Gate])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -173,9 +210,9 @@ func (r *Container) MakeGate() contractsaccess.Gate {
 }
 
 func (r *Container) MakeGrpc() contractsgrpc.Grpc {
-	instance, err := r.Make(contracts.BindingGrpc)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Grpc])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -183,31 +220,31 @@ func (r *Container) MakeGrpc() contractsgrpc.Grpc {
 }
 
 func (r *Container) MakeHash() contractshash.Hash {
-	instance, err := r.Make(contracts.BindingHash)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Hash])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
 	return instance.(contractshash.Hash)
 }
 
-func (r *Container) MakeHttp() contractshttpclient.Request {
-	instance, err := r.Make(contracts.BindingHttp)
+func (r *Container) MakeHttp() contractshttpclient.Factory {
+	instance, err := r.Make(facades.FacadeToBinding[facades.Http])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
-	return instance.(contractshttpclient.Request)
+	return instance.(contractshttpclient.Factory)
 }
 
 func (r *Container) MakeLang(ctx context.Context) contractstranslation.Translator {
-	instance, err := r.MakeWith(contracts.BindingTranslation, map[string]any{
+	instance, err := r.MakeWith(facades.FacadeToBinding[facades.Lang], map[string]any{
 		"ctx": ctx,
 	})
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -215,9 +252,9 @@ func (r *Container) MakeLang(ctx context.Context) contractstranslation.Translato
 }
 
 func (r *Container) MakeLog() contractslog.Log {
-	instance, err := r.Make(contracts.BindingLog)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Log])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -225,9 +262,9 @@ func (r *Container) MakeLog() contractslog.Log {
 }
 
 func (r *Container) MakeMail() contractsmail.Mail {
-	instance, err := r.Make(contracts.BindingMail)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Mail])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -235,9 +272,9 @@ func (r *Container) MakeMail() contractsmail.Mail {
 }
 
 func (r *Container) MakeOrm() contractsorm.Orm {
-	instance, err := r.Make(contracts.BindingOrm)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Orm])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 	if instance == nil {
@@ -247,10 +284,23 @@ func (r *Container) MakeOrm() contractsorm.Orm {
 	return instance.(contractsorm.Orm)
 }
 
-func (r *Container) MakeQueue() contractsqueue.Queue {
-	instance, err := r.Make(contracts.BindingQueue)
+func (r *Container) MakeProcess() contractsprocess.Process {
+	instance, err := r.Make(facades.FacadeToBinding[facades.Process])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
+		return nil
+	}
+	if instance == nil {
+		return nil
+	}
+
+	return instance.(contractsprocess.Process)
+}
+
+func (r *Container) MakeQueue() contractsqueue.Queue {
+	instance, err := r.Make(facades.FacadeToBinding[facades.Queue])
+	if err != nil {
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -258,9 +308,9 @@ func (r *Container) MakeQueue() contractsqueue.Queue {
 }
 
 func (r *Container) MakeRateLimiter() contractshttp.RateLimiter {
-	instance, err := r.Make(contracts.BindingRateLimiter)
+	instance, err := r.Make(facades.FacadeToBinding[facades.RateLimiter])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -268,9 +318,9 @@ func (r *Container) MakeRateLimiter() contractshttp.RateLimiter {
 }
 
 func (r *Container) MakeRoute() contractsroute.Route {
-	instance, err := r.Make(contracts.BindingRoute)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Route])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -278,9 +328,9 @@ func (r *Container) MakeRoute() contractsroute.Route {
 }
 
 func (r *Container) MakeSchedule() contractsschedule.Schedule {
-	instance, err := r.Make(contracts.BindingSchedule)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Schedule])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -288,9 +338,9 @@ func (r *Container) MakeSchedule() contractsschedule.Schedule {
 }
 
 func (r *Container) MakeSchema() contractsmigration.Schema {
-	instance, err := r.Make(contracts.BindingSchema)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Schema])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 	if instance == nil {
@@ -300,10 +350,21 @@ func (r *Container) MakeSchema() contractsmigration.Schema {
 	return instance.(contractsmigration.Schema)
 }
 
-func (r *Container) MakeSession() contractsession.Manager {
-	instance, err := r.Make(contracts.BindingSession)
+func (r *Container) MakeSeeder() contractsseerder.Facade {
+	instance, err := r.Make(facades.FacadeToBinding[facades.Seeder])
+
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
+		return nil
+	}
+
+	return instance.(contractsseerder.Facade)
+}
+
+func (r *Container) MakeSession() contractsession.Manager {
+	instance, err := r.Make(facades.FacadeToBinding[facades.Session])
+	if err != nil {
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -311,19 +372,29 @@ func (r *Container) MakeSession() contractsession.Manager {
 }
 
 func (r *Container) MakeStorage() contractsfilesystem.Storage {
-	instance, err := r.Make(contracts.BindingFilesystem)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Storage])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
 	return instance.(contractsfilesystem.Storage)
 }
 
-func (r *Container) MakeTesting() contractstesting.Testing {
-	instance, err := r.Make(contracts.BindingTesting)
+func (r *Container) MakeTelemetry() contractstelemetry.Telemetry {
+	instance, err := r.Make(facades.FacadeToBinding[facades.Telemetry])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
+		return nil
+	}
+
+	return instance.(contractstelemetry.Telemetry)
+}
+
+func (r *Container) MakeTesting() contractstesting.Testing {
+	instance, err := r.Make(facades.FacadeToBinding[facades.Testing])
+	if err != nil {
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
@@ -331,34 +402,23 @@ func (r *Container) MakeTesting() contractstesting.Testing {
 }
 
 func (r *Container) MakeValidation() contractsvalidation.Validation {
-	instance, err := r.Make(contracts.BindingValidation)
+	instance, err := r.Make(facades.FacadeToBinding[facades.Validation])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
 	return instance.(contractsvalidation.Validation)
 }
 
-func (r *Container) MakeView() contractshttp.View {
-	instance, err := r.Make(contracts.BindingView)
+func (r *Container) MakeView() contractsview.View {
+	instance, err := r.Make(facades.FacadeToBinding[facades.View])
 	if err != nil {
-		color.Errorln(err)
+		logMakeErrorIfNeeded(err)
 		return nil
 	}
 
-	return instance.(contractshttp.View)
-}
-
-func (r *Container) MakeSeeder() contractsseerder.Facade {
-	instance, err := r.Make(contracts.BindingSeeder)
-
-	if err != nil {
-		color.Errorln(err)
-		return nil
-	}
-
-	return instance.(contractsseerder.Facade)
+	return instance.(contractsview.View)
 }
 
 func (r *Container) MakeWith(key any, parameters map[string]any) (any, error) {
@@ -372,7 +432,7 @@ func (r *Container) Singleton(key any, callback func(app contractsfoundation.App
 func (r *Container) make(key any, parameters map[string]any) (any, error) {
 	binding, ok := r.bindings.Load(key)
 	if !ok {
-		return nil, fmt.Errorf("binding not found: %+v", key)
+		return nil, NewBindingNotFoundError(key)
 	}
 
 	if parameters == nil {
@@ -405,5 +465,12 @@ func (r *Container) make(key any, parameters map[string]any) (any, error) {
 		r.instances.Store(key, concrete)
 
 		return concrete, nil
+	}
+}
+
+func logMakeErrorIfNeeded(err error) {
+	var bindingNotFoundErr *BindingNotFoundError
+	if !errors.As(err, &bindingNotFoundErr) {
+		color.Errorln(err)
 	}
 }

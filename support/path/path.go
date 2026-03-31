@@ -1,41 +1,70 @@
 package path
 
 import (
-	"github.com/goravel/framework/facades"
+	"github.com/goravel/framework/packages"
+	packagespaths "github.com/goravel/framework/packages/paths"
 )
 
 func App(paths ...string) string {
-	return facades.App().Path(paths...)
+	return packages.Paths().App().Abs(paths...)
 }
 
 func Base(paths ...string) string {
-	return facades.App().BasePath(paths...)
+	return packagespaths.Abs(paths...)
+}
+
+func Bootstrap(paths ...string) string {
+	return packages.Paths().Bootstrap().Abs(paths...)
 }
 
 func Config(paths ...string) string {
-	return facades.App().ConfigPath(paths...)
+	return packages.Paths().Config().Abs(paths...)
 }
 
 func Database(paths ...string) string {
-	return facades.App().DatabasePath(paths...)
-}
-
-func Storage(paths ...string) string {
-	return facades.App().StoragePath(paths...)
-}
-
-func Resource(paths ...string) string {
-	return facades.App().ResourcePath(paths...)
-}
-
-func Lang(paths ...string) string {
-	return facades.App().LangPath(paths...)
-}
-
-func Public(paths ...string) string {
-	return facades.App().PublicPath(paths...)
+	return packages.Paths().Database().Abs(paths...)
 }
 
 func Executable(paths ...string) string {
-	return facades.App().ExecutablePath(paths...)
+	return Base(paths...)
+}
+
+func Facade(paths ...string) string {
+	return packages.Paths().Facades().Abs(paths...)
+}
+
+func Lang(paths ...string) string {
+	return packages.Paths().Lang().Abs(paths...)
+}
+
+func Migration(paths ...string) string {
+	return packages.Paths().Migrations().Abs(paths...)
+}
+
+func Model(paths ...string) string {
+	return packages.Paths().Models().Abs(paths...)
+}
+
+func Public(paths ...string) string {
+	return packages.Paths().Public().Abs(paths...)
+}
+
+func Resource(paths ...string) string {
+	return packages.Paths().Resources().Abs(paths...)
+}
+
+func Route(paths ...string) string {
+	return packages.Paths().Routes().Abs(paths...)
+}
+
+func Storage(paths ...string) string {
+	return packages.Paths().Storage().Abs(paths...)
+}
+
+func Test(paths ...string) string {
+	return packages.Paths().Tests().Abs(paths...)
+}
+
+func View(paths ...string) string {
+	return packages.Paths().Views().Abs(paths...)
 }

@@ -54,7 +54,7 @@ func (_c *Setup_Execute_Call) RunAndReturn(run func()) *Setup_Execute_Call {
 }
 
 // Install provides a mock function with given fields: modifiers
-func (_m *Setup) Install(modifiers ...modify.File) packages.Setup {
+func (_m *Setup) Install(modifiers ...modify.Apply) packages.Setup {
 	_va := make([]interface{}, len(modifiers))
 	for _i := range modifiers {
 		_va[_i] = modifiers[_i]
@@ -68,7 +68,7 @@ func (_m *Setup) Install(modifiers ...modify.File) packages.Setup {
 	}
 
 	var r0 packages.Setup
-	if rf, ok := ret.Get(0).(func(...modify.File) packages.Setup); ok {
+	if rf, ok := ret.Get(0).(func(...modify.Apply) packages.Setup); ok {
 		r0 = rf(modifiers...)
 	} else {
 		if ret.Get(0) != nil {
@@ -85,18 +85,18 @@ type Setup_Install_Call struct {
 }
 
 // Install is a helper method to define mock.On call
-//   - modifiers ...modify.File
+//   - modifiers ...modify.Apply
 func (_e *Setup_Expecter) Install(modifiers ...interface{}) *Setup_Install_Call {
 	return &Setup_Install_Call{Call: _e.mock.On("Install",
 		append([]interface{}{}, modifiers...)...)}
 }
 
-func (_c *Setup_Install_Call) Run(run func(modifiers ...modify.File)) *Setup_Install_Call {
+func (_c *Setup_Install_Call) Run(run func(modifiers ...modify.Apply)) *Setup_Install_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := make([]modify.File, len(args)-0)
+		variadicArgs := make([]modify.Apply, len(args)-0)
 		for i, a := range args[0:] {
 			if a != nil {
-				variadicArgs[i] = a.(modify.File)
+				variadicArgs[i] = a.(modify.Apply)
 			}
 		}
 		run(variadicArgs...)
@@ -109,13 +109,60 @@ func (_c *Setup_Install_Call) Return(_a0 packages.Setup) *Setup_Install_Call {
 	return _c
 }
 
-func (_c *Setup_Install_Call) RunAndReturn(run func(...modify.File) packages.Setup) *Setup_Install_Call {
+func (_c *Setup_Install_Call) RunAndReturn(run func(...modify.Apply) packages.Setup) *Setup_Install_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Paths provides a mock function with no fields
+func (_m *Setup) Paths() packages.Paths {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Paths")
+	}
+
+	var r0 packages.Paths
+	if rf, ok := ret.Get(0).(func() packages.Paths); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(packages.Paths)
+		}
+	}
+
+	return r0
+}
+
+// Setup_Paths_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Paths'
+type Setup_Paths_Call struct {
+	*mock.Call
+}
+
+// Paths is a helper method to define mock.On call
+func (_e *Setup_Expecter) Paths() *Setup_Paths_Call {
+	return &Setup_Paths_Call{Call: _e.mock.On("Paths")}
+}
+
+func (_c *Setup_Paths_Call) Run(run func()) *Setup_Paths_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *Setup_Paths_Call) Return(_a0 packages.Paths) *Setup_Paths_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Setup_Paths_Call) RunAndReturn(run func() packages.Paths) *Setup_Paths_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Uninstall provides a mock function with given fields: modifiers
-func (_m *Setup) Uninstall(modifiers ...modify.File) packages.Setup {
+func (_m *Setup) Uninstall(modifiers ...modify.Apply) packages.Setup {
 	_va := make([]interface{}, len(modifiers))
 	for _i := range modifiers {
 		_va[_i] = modifiers[_i]
@@ -129,7 +176,7 @@ func (_m *Setup) Uninstall(modifiers ...modify.File) packages.Setup {
 	}
 
 	var r0 packages.Setup
-	if rf, ok := ret.Get(0).(func(...modify.File) packages.Setup); ok {
+	if rf, ok := ret.Get(0).(func(...modify.Apply) packages.Setup); ok {
 		r0 = rf(modifiers...)
 	} else {
 		if ret.Get(0) != nil {
@@ -146,18 +193,18 @@ type Setup_Uninstall_Call struct {
 }
 
 // Uninstall is a helper method to define mock.On call
-//   - modifiers ...modify.File
+//   - modifiers ...modify.Apply
 func (_e *Setup_Expecter) Uninstall(modifiers ...interface{}) *Setup_Uninstall_Call {
 	return &Setup_Uninstall_Call{Call: _e.mock.On("Uninstall",
 		append([]interface{}{}, modifiers...)...)}
 }
 
-func (_c *Setup_Uninstall_Call) Run(run func(modifiers ...modify.File)) *Setup_Uninstall_Call {
+func (_c *Setup_Uninstall_Call) Run(run func(modifiers ...modify.Apply)) *Setup_Uninstall_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := make([]modify.File, len(args)-0)
+		variadicArgs := make([]modify.Apply, len(args)-0)
 		for i, a := range args[0:] {
 			if a != nil {
-				variadicArgs[i] = a.(modify.File)
+				variadicArgs[i] = a.(modify.Apply)
 			}
 		}
 		run(variadicArgs...)
@@ -170,7 +217,7 @@ func (_c *Setup_Uninstall_Call) Return(_a0 packages.Setup) *Setup_Uninstall_Call
 	return _c
 }
 
-func (_c *Setup_Uninstall_Call) RunAndReturn(run func(...modify.File) packages.Setup) *Setup_Uninstall_Call {
+func (_c *Setup_Uninstall_Call) RunAndReturn(run func(...modify.Apply) packages.Setup) *Setup_Uninstall_Call {
 	_c.Call.Return(run)
 	return _c
 }

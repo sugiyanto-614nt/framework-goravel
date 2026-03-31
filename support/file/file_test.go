@@ -3,6 +3,7 @@ package file
 import (
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,6 +18,131 @@ func TestClientOriginalExtension(t *testing.T) {
 
 func TestContain(t *testing.T) {
 	assert.True(t, Contain("../constant.go", "Version"))
+}
+
+func TestContains(t *testing.T) {
+	t.Run("file not exists", func(t *testing.T) {
+		assert.False(t, Contains("nonexistent.go", "content"))
+	})
+
+	t.Run("file exists and contains search string", func(t *testing.T) {
+		assert.True(t, Contains("../constant.go", "Version"))
+	})
+
+	t.Run("file exists but does not contain search string", func(t *testing.T) {
+		assert.False(t, Contains("../constant.go", "NonExistentString123"))
+	})
+
+	t.Run("normalize line endings - LF file with LF search", func(t *testing.T) {
+		filePath := path.Join(t.TempDir(), "test_lf.txt")
+		content := "line1\nline2\nline3"
+		assert.NoError(t, PutContent(filePath, content))
+		assert.True(t, Contains(filePath, "line1\nline2"))
+	})
+
+	t.Run("normalize line endings - CRLF file with LF search", func(t *testing.T) {
+		filePath := path.Join(t.TempDir(), "test_crlf.txt")
+		// Simulate Windows CRLF line endings
+		content := "line1\r\nline2\r\nline3"
+		assert.NoError(t, PutContent(filePath, content))
+		// Search with LF should still work due to normalization
+		assert.True(t, Contains(filePath, "line1\nline2"))
+	})
+
+	t.Run("normalize line endings - CRLF file with CRLF search", func(t *testing.T) {
+		filePath := path.Join(t.TempDir(), "test_crlf2.txt")
+		content := "line1\r\nline2\r\nline3"
+		assert.NoError(t, PutContent(filePath, content))
+		// Search with CRLF should also work
+		assert.True(t, Contains(filePath, "line1\r\nline2"))
+	})
+
+	t.Run("normalize line endings - LF file with CRLF search", func(t *testing.T) {
+		filePath := path.Join(t.TempDir(), "test_lf2.txt")
+		content := "line1\nline2\nline3"
+		assert.NoError(t, PutContent(filePath, content))
+		// Search with CRLF should match due to normalization
+		assert.True(t, Contains(filePath, "line1\r\nline2"))
+	})
+
+	t.Run("multiline content with mixed line endings", func(t *testing.T) {
+		filePath := path.Join(t.TempDir(), "test_mixed.txt")
+		// Mixed line endings (some LF, some CRLF)
+		content := "line1\nline2\r\nline3\nline4"
+		assert.NoError(t, PutContent(filePath, content))
+		// After normalization, all should be LF
+		assert.True(t, Contains(filePath, "line2\nline3"))
+	})
+
+	t.Run("search for code with line breaks", func(t *testing.T) {
+		filePath := path.Join(t.TempDir(), "test_code.go")
+		content := "package main\r\n\r\nfunc main() {\r\n\tfmt.Println(\"hello\")\r\n}"
+		assert.NoError(t, PutContent(filePath, content))
+		// Search for code snippet with LF
+		assert.True(t, Contains(filePath, "func main() {\n\tfmt.Println(\"hello\")"))
+	})
+
+	t.Run("empty file", func(t *testing.T) {
+		filePath := path.Join(t.TempDir(), "empty.txt")
+		assert.NoError(t, PutContent(filePath, ""))
+		assert.False(t, Contains(filePath, "anything"))
+		assert.True(t, Contains(filePath, ""))
+	})
+
+	t.Run("search string with no line breaks", func(t *testing.T) {
+		filePath := path.Join(t.TempDir(), "simple.txt")
+		assert.NoError(t, PutContent(filePath, "hello world"))
+		assert.True(t, Contains(filePath, "hello"))
+		assert.True(t, Contains(filePath, "world"))
+		assert.True(t, Contains(filePath, "hello world"))
+	})
+}
+
+func TestCopyFile(t *testing.T) {
+	t.Run("copy file successfully", func(t *testing.T) {
+		src := filepath.Join(t.TempDir(), ".env.example")
+		dst := filepath.Join(t.TempDir(), ".env")
+		content := "example env content"
+
+		assert.NoError(t, os.WriteFile(src, []byte(content), os.ModePerm))
+		assert.True(t, Exists(src))
+
+		assert.NoError(t, Copy(src, dst))
+		assert.True(t, Exists(dst))
+
+		// Verify content was copied correctly
+		dstContent, err := GetContent(dst)
+		assert.NoError(t, err)
+		assert.Equal(t, content, dstContent)
+	})
+
+	t.Run("source file does not exist", func(t *testing.T) {
+		src := filepath.Join(t.TempDir(), "nonexistent.txt")
+		dst := filepath.Join(t.TempDir(), "destination.txt")
+
+		assert.Error(t, Copy(src, dst))
+		assert.False(t, Exists(dst))
+	})
+
+	t.Run("copy to existing file overwrites", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		src := filepath.Join(tmpDir, "source.txt")
+		dst := filepath.Join(tmpDir, "destination.txt")
+		srcContent := "new content"
+		oldContent := "old content"
+
+		// Create destination with old content
+		assert.NoError(t, PutContent(dst, oldContent))
+		// Create source with new content
+		assert.NoError(t, PutContent(src, srcContent))
+
+		// Copy should overwrite
+		assert.NoError(t, Copy(src, dst))
+
+		result, err := GetContent(dst)
+		assert.NoError(t, err)
+		assert.Equal(t, srcContent, result)
+	})
 }
 
 func TestCreate(t *testing.T) {
@@ -90,7 +216,7 @@ func TestPutContent(t *testing.T) {
 	assert.True(t, Contain(filePath, "goravel"))
 	assert.Equal(t, 1, file.GetLineNum(filePath))
 	// append content
-	assert.NoError(t, PutContent(filePath, "\nframework", WithAppend(true)))
+	assert.NoError(t, PutContent(filePath, "\nframework", WithAppend()))
 	assert.True(t, Contain(filePath, "goravel\nframework"))
 	assert.Equal(t, 2, file.GetLineNum(filePath))
 	// overwrite content

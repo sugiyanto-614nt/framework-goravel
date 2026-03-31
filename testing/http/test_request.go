@@ -7,11 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/goravel/framework/contracts/foundation"
 	"github.com/goravel/framework/contracts/route"
 	"github.com/goravel/framework/contracts/session"
+	"github.com/goravel/framework/contracts/testing"
 	contractshttp "github.com/goravel/framework/contracts/testing/http"
 	"github.com/goravel/framework/errors"
 	"github.com/goravel/framework/support/collect"
@@ -20,23 +22,22 @@ import (
 )
 
 type TestRequest struct {
-	t                 *testing.T
+	t                 testing.TestingT
 	ctx               context.Context
-	bind              any
 	defaultHeaders    map[string]string
-	defaultCookies    map[string]string
+	defaultCookies    []*http.Cookie
 	json              foundation.Json
 	route             route.Route
 	session           session.Manager
 	sessionAttributes map[string]any
 }
 
-func NewTestRequest(t *testing.T, json foundation.Json, route route.Route, session session.Manager) contractshttp.Request {
+func NewTestRequest(t testing.TestingT, json foundation.Json, route route.Route, session session.Manager) contractshttp.Request {
 	return &TestRequest{
 		t:                 t,
 		ctx:               context.Background(),
 		defaultHeaders:    make(map[string]string),
-		defaultCookies:    make(map[string]string),
+		defaultCookies:    make([]*http.Cookie, 0),
 		json:              json,
 		route:             route,
 		session:           session,
@@ -80,11 +81,6 @@ func (r *TestRequest) Options(uri string) (contractshttp.Response, error) {
 	return r.call(http.MethodOptions, uri, nil)
 }
 
-func (r *TestRequest) Bind(value any) contractshttp.Request {
-	r.bind = value
-	return r
-}
-
 func (r *TestRequest) FlushHeaders() contractshttp.Request {
 	r.defaultHeaders = make(map[string]string)
 	return r
@@ -105,13 +101,13 @@ func (r *TestRequest) WithoutHeader(key string) contractshttp.Request {
 	return r
 }
 
-func (r *TestRequest) WithCookies(cookies map[string]string) contractshttp.Request {
-	r.defaultCookies = collect.Merge(r.defaultCookies, cookies)
+func (r *TestRequest) WithCookies(cookies []*http.Cookie) contractshttp.Request {
+	r.defaultCookies = append(r.defaultCookies, cookies...)
 	return r
 }
 
-func (r *TestRequest) WithCookie(key, value string) contractshttp.Request {
-	maps.Set(r.defaultCookies, key, value)
+func (r *TestRequest) WithCookie(cookie *http.Cookie) contractshttp.Request {
+	r.defaultCookies = append(r.defaultCookies, cookie)
 	return r
 }
 
@@ -129,7 +125,7 @@ func (r *TestRequest) WithToken(token string, ttype ...string) contractshttp.Req
 }
 
 func (r *TestRequest) WithBasicAuth(username, password string) contractshttp.Request {
-	encoded := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
+	encoded := base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "%s:%s", username, password))
 	return r.WithToken(encoded, "Basic")
 }
 
@@ -157,13 +153,13 @@ func (r *TestRequest) call(method string, uri string, body io.Reader) (contracts
 		req.Header.Set(key, value)
 	}
 
-	for name, value := range r.defaultCookies {
-		cookie := http.Cookie{Name: name, Value: value}
-		req.AddCookie(&cookie)
+	for _, cookie := range r.defaultCookies {
+		req.AddCookie(cookie)
 	}
 
 	if r.route == nil {
-		r.t.Fatal(errors.RouteFacadeNotSet.SetModule(errors.ModuleTesting))
+		assert.FailNow(r.t, errors.RouteFacadeNotSet.SetModule(errors.ModuleTesting).Error())
+		return nil, errors.RouteFacadeNotSet
 	}
 
 	response, err := r.route.Test(req)
@@ -171,19 +167,7 @@ func (r *TestRequest) call(method string, uri string, body io.Reader) (contracts
 		return nil, err
 	}
 
-	testResponse := NewTestResponse(r.t, response, r.json, r.session)
-	if r.bind != nil {
-		body, err := testResponse.Content()
-		if err != nil {
-			return nil, err
-		}
-
-		if err := r.json.Unmarshal([]byte(body), r.bind); err != nil {
-			return nil, err
-		}
-	}
-
-	return testResponse, nil
+	return NewTestResponse(r.t, response, r.json, r.session), nil
 }
 
 func (r *TestRequest) setSession() error {
@@ -202,22 +186,22 @@ func (r *TestRequest) setSession() error {
 	}
 
 	// Build session
-	session, err := r.session.BuildSession(driver)
+	sess, err := r.session.BuildSession(driver)
 	if err != nil {
 		return err
 	}
 
 	for key, value := range r.sessionAttributes {
-		session.Put(key, value)
+		sess.Put(key, value)
 	}
 
-	r.WithCookie(session.GetName(), session.GetID())
+	r.WithCookie(&http.Cookie{Name: sess.GetName(), Value: sess.GetID()})
 
-	if err = session.Save(); err != nil {
+	if err = sess.Save(); err != nil {
 		return err
 	}
 
 	// Release session
-	r.session.ReleaseSession(session)
+	r.session.ReleaseSession(sess)
 	return nil
 }

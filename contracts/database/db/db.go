@@ -54,7 +54,7 @@ type Query interface {
 	// DoesntExist determines if no rows exist for the current query.
 	DoesntExist() (bool, error)
 	// Distinct forces the query to only return distinct results.
-	Distinct() Query
+	Distinct(columns ...string) Query
 	// Each executes the query and passes each row to the callback.
 	Each(callback func(row Row) error) error
 	// Exists returns true if matching records exist; otherwise, it returns false.
@@ -97,7 +97,7 @@ type Query interface {
 	// Offset specifies the number of records to skip before starting to return the records.
 	Offset(offset uint64) Query
 	// OrderBy specifies the order should be ascending.
-	OrderBy(column string) Query
+	OrderBy(column string, directions ...string) Query
 	// OrderByDesc specifies the order should be descending.
 	OrderByDesc(column string) Query
 	// OrderByRaw specifies the order should be raw.
@@ -110,6 +110,16 @@ type Query interface {
 	OrWhereColumn(column1 string, column2 ...string) Query
 	// OrWhereIn adds an "or where column in" clause to the query.
 	OrWhereIn(column string, values []any) Query
+	// OrWhereJsonContains adds an "or where JSON contains" clause to the query.
+	OrWhereJsonContains(column string, value any) Query
+	// OrWhereJsonContainsKey add a clause that determines if a JSON path exists to the query.
+	OrWhereJsonContainsKey(column string) Query
+	// OrWhereJsonDoesntContain add an "or where JSON not contains" clause to the query.
+	OrWhereJsonDoesntContain(column string, value any) Query
+	// OrWhereJsonDoesntContainKey add a clause that determines if a JSON path does not exist to the query.
+	OrWhereJsonDoesntContainKey(column string) Query
+	// OrWhereJsonLength add an "or where JSON length" clause to the query.
+	OrWhereJsonLength(column string, length int) Query
 	// OrWhereLike adds an "or where column like" clause to the query.
 	OrWhereLike(column string, value string) Query
 	// OrWhereNot adds an "or where not" clause to the query.
@@ -117,7 +127,7 @@ type Query interface {
 	// OrWhereNotBetween adds an "or where column not between x and y" clause to the query.
 	OrWhereNotBetween(column string, x, y any) Query
 	// OrWhereNotIn adds an "or where column not in" clause to the query.
-	OrWhereNotIn(column string, args []any) Query
+	OrWhereNotIn(column string, values []any) Query
 	// OrWhereNotLike adds an "or where column not like" clause to the query.
 	OrWhereNotLike(column string, value string) Query
 	// OrWhereNotNull adds an "or where column is not null" clause to the query.
@@ -137,7 +147,13 @@ type Query interface {
 	// SharedLock locks the selected rows in the table.
 	SharedLock() Query
 	// Sum calculates the sum of a column's values and populates the destination object.
-	Sum(column string) (int64, error)
+	Sum(column string, dest any) error
+	// Avg calculates the average of a column's values.
+	Avg(column string, dest any) error
+	// Min calculates the minimum value of a column.
+	Min(column string, dest any) error
+	// Max calculates the maximum value of a column.
+	Max(column string, dest any) error
 	// ToSql returns the query as a SQL string.
 	ToSql() ToSql
 	// ToRawSql returns the query as a raw SQL string.
@@ -153,6 +169,10 @@ type Query interface {
 	When(condition bool, callback func(query Query) Query, falseCallback ...func(query Query) Query) Query
 	// Where adds a "where" clause to the query.
 	Where(query any, args ...any) Query
+	// WhereAll adds a "where all columns match" clause to the query.
+	WhereAll(columns []string, args ...any) Query
+	// WhereAny adds a "where any of columns match" clause to the query.
+	WhereAny(columns []string, args ...any) Query
 	// WhereBetween adds a "where column between x and y" clause to the query.
 	WhereBetween(column string, x, y any) Query
 	// WhereColumn adds a "where" clause comparing two columns to the query.
@@ -161,8 +181,20 @@ type Query interface {
 	WhereExists(func() Query) Query
 	// WhereIn adds a "where column in" clause to the query.
 	WhereIn(column string, values []any) Query
+	// WhereJsonContains add a "where JSON contains" clause to the query.
+	WhereJsonContains(column string, value any) Query
+	// WhereJsonContainsKey add a clause that determines if a JSON path exists to the query.
+	WhereJsonContainsKey(column string) Query
+	// WhereJsonDoesntContain add a "where JSON not contains" clause to the query.
+	WhereJsonDoesntContain(column string, value any) Query
+	// WhereJsonDoesntContainKey add a clause that determines if a JSON path does not exist to the query.
+	WhereJsonDoesntContainKey(column string) Query
+	// WhereJsonLength add a "where JSON length" clause to the query.
+	WhereJsonLength(column string, length int) Query
 	// WhereLike adds a "where like" clause to the query.
 	WhereLike(column string, value string) Query
+	// WhereNone adds a "where none of columns match" clause to the query.
+	WhereNone(columns []string, args ...any) Query
 	// WhereNot adds a basic "where not" clause to the query.
 	WhereNot(query any, args ...any) Query
 	// WhereNotBetween adds a "where column not between x and y" clause to the query.

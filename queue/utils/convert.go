@@ -17,9 +17,9 @@ type Task struct {
 }
 
 type Job struct {
+	Delay     *time.Time           `json:"delay"`
 	Signature string               `json:"signature"`
 	Args      []contractsqueue.Arg `json:"args"`
-	Delay     *time.Time           `json:"delay"`
 }
 
 func TaskToJson(task contractsqueue.Task, json foundation.Json) (string, error) {
@@ -100,7 +100,7 @@ func JsonToTask(payload string, jobStorer contractsqueue.JobStorer, json foundat
 		chain = append(chain, jobs)
 	}
 
-	job, err := jobStorer.Get(task.Job.Signature)
+	job, err := jobStorer.Get(task.Signature)
 	if err != nil {
 		return contractsqueue.Task{}, err
 	}

@@ -51,8 +51,8 @@ func (s *TestMakeCommandTestSuite) TestExtend() {
 
 			testCases := []struct {
 				name     string
-				got      interface{}
-				expected interface{}
+				got      any
+				expected any
 			}{
 				{"Name", flag.Name, "force"},
 				{"Aliases", flag.Aliases, []string{"f"}},
@@ -96,5 +96,7 @@ func (s *TestMakeCommandTestSuite) TestTestHandle() {
 	s.True(file.Contain("tests/user/user_test.go", "package user"))
 	s.True(file.Contain("tests/user/user_test.go", "type UserTestSuite struct"))
 	s.True(file.Contain("tests/user/user_test.go", "func (s *UserTestSuite) SetupTest() {"))
+	s.True(file.Contain("tests/user/user_test.go", "framework/tests"))
+	s.True(file.Contain("tests/user/user_test.go", "tests.TestCase"))
 	s.NoError(file.Remove("tests"))
 }
